@@ -8,7 +8,10 @@
 </head>
 <body>
   <main class="app">
-    <header><h1>Súper Calculadora Pro</h1></header>
+    <header>
+      <h1>Súper Calculadora Pro</h1>
+      <button id="cfgBtn" class="zoom" type="button">Ajustes</button>
+    </header>
     <nav id="nav" aria-label="Módulos"></nav>
     <section class="panel">
       <h2 id="title"></h2>
@@ -32,6 +35,22 @@
   <dialog id="dlg" aria-label="Dibujo ampliado">
     <button id="close" class="zoom" type="button">Cerrar</button>
     <div id="big" class="big"></div>
+  </dialog>
+
+  <dialog id="cfg" aria-label="Ajustes">
+    <div class="card">
+      <h2>Ajustes</h2>
+      <label>Decimales
+        <select id="cDec"><option value="auto">Automático</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select>
+      </label>
+      <label>Valor de π
+        <select id="cPi"><option value="exact">Exacto (3.14159265…)</option><option value="3.14">3.14</option><option value="3.1416">3.1416</option><option value="22/7">22/7</option></select>
+      </label>
+      <label>Paso de los botones − y +
+        <select id="cStep"><option>0.01</option><option>0.1</option><option>1</option><option>10</option></select>
+      </label>
+      <div class="acts"><button id="cReset" type="button">Restablecer</button><button id="cClose" type="button">Listo</button></div>
+    </div>
   </dialog>
 
   <script src="dibujos.js"></script>

@@ -126,6 +126,13 @@ const barras = d => {
   }).join('') + L(20, my, W - 20, my, 'gd') + T(W - 20, my - 6, 'prom = ' + fmt(mean), 'end'));
 };
 
+// Gráfica de ax³ + bx² + cx + d con sus raíces reales
+const cubica = ({ a, b, c, d }) => {
+  const { r } = cubicRoots(a, b, c, d), f = x => ((a * x + b) * x + c) * x + d;
+  return plane([[0, d], ...r.flatMap(x => [[x - 1, 0], [x, 0], [x + 1, 0]])], g =>
+    curve(g, f) + r.map((x, i) => pt(g, x, 0, 'x' + (i + 1), 'hl', 18)).join(''));
+};
+
 // Modelo de áreas de (a + b)²: un cuadrado de lado a + b dividido en a², ab, ab y b²
 const areaBinomio = (a, b) => {
   if (!(a > 0 && b > 0)) return '';
@@ -137,6 +144,7 @@ const areaBinomio = (a, b) => {
 
 const DRAW = {
   'Binomios y polinomios': [v => areaBinomio(v.a, v.b)],
+  'Trinomios y polinomios': [, parab, cubica],
   'Círculo': [v => circulo(v.r), v => circulo(sq(v.A / P)), v => circulo(v.p / (2 * P))],
   'Distancia entre puntos': v => seg(v, false),
   'Punto medio': v => seg(v, true),

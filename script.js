@@ -1,7 +1,28 @@
 const $ = s => document.querySelector(s);
-const P = Math.PI, sq = Math.sqrt;
+let P = Math.PI;   // se puede cambiar en Ajustes
+const sq = Math.sqrt;
 const need = (ok, msg) => { if (!ok) throw new Error(msg); };
 const AB = [['a', 'a'], ['b', 'b']];
+// Ajustes del usuario (se guardan en el navegador)
+const CFG = { dec: 'auto', pi: 'exact', step: '1' };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem('sc-cfg'))); } catch {}
+// Polinomio desde sus coeficientes (de mayor a menor grado): [1, -3, 2] -> x² − 3x + 2
+const px = c => { const n = c.length - 1;
+  const t = c.map((v, i) => { const e = n - i, k = fmt(Math.abs(v)); if (k === '0') return '';
+    return (v < 0 ? ' − ' : ' + ') + (k !== '1' || e === 0 ? k : '') + (e ? 'x' + (e > 1 ? sup(e) : '') : ''); })
+    .join('').replace(/^ \+ /, '').replace(/^ − /, '−');
+  return t || '0'; };
+// Raíces reales de ax³ + bx² + cx + d (Cardano / método trigonométrico)
+const cubicRoots = (a, b, c, d) => {
+  const B = b / a, C = c / a, D = d / a, p = C - B * B / 3, q = 2 * B ** 3 / 27 - B * C / 3 + D, sh = -B / 3;
+  const del = (q / 2) ** 2 + (p / 3) ** 3, eps = 1e-9 * Math.max(1, (q / 2) ** 2, Math.abs((p / 3) ** 3));
+  let r;
+  if (del > eps) { const w = Math.sqrt(del); r = [Math.cbrt(-q / 2 + w) + Math.cbrt(-q / 2 - w) + sh]; }
+  else if (del >= -eps) { const u = Math.cbrt(-q / 2); r = [2 * u + sh, -u + sh, -u + sh]; }
+  else { const m = 2 * Math.sqrt(-p / 3), f = Math.acos(Math.max(-1, Math.min(1, 3 * q / (p * m))));
+    r = [0, 1, 2].map(k => m * Math.cos((f - 2 * Math.PI * k) / 3) + sh); }
+  return { r: r.sort((x, y) => x - y), B, C };
+};
 const isInt = (...n) => n.every(Number.isInteger);
 const gcd = (a, b) => b ? gcd(b, a % b) : Math.abs(a);
 const fact = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };
@@ -15,7 +36,7 @@ function fmt(v) {
   if (typeof v !== 'number') return v;
   if (!Number.isFinite(v)) return 'No definido';
   if (Math.abs(v) < 1e-12) v = 0;
-  return String(parseFloat(v.toPrecision(10)));
+  return String(CFG.dec === 'auto' ? parseFloat(v.toPrecision(10)) : +v.toFixed(+CFG.dec));
 }
 
 /* Cada módulo tiene "modes"; cada mode tiene sus campos y una función calc
@@ -108,14 +129,37 @@ const MODULES = [
         return [['Desarrollo', poly(n, s)], ...t.map((v, k) => [term(n, k), v]), ['Resultado', t.reduce((x, y) => x + y, 0)]]; } })),
     { name: '(a + b)(a − b)', fields: AB,
       calc: ({ a, b }) => [['Desarrollo', 'a² − b²'], ['a²', a * a], ['b²', b * b], ['Resultado', a * a - b * b]] },
+    ...[1, -1].map(s => ({ name: `a³ ${s > 0 ? '+' : '−'} b³`, fields: AB,
+      calc: ({ a, b }) => [['Factorización', `(a ${s > 0 ? '+' : '−'} b)(a² ${s > 0 ? '−' : '+'} ab + b²)`],
+        ['Factor 1', a + s * b], ['Factor 2', a * a - s * a * b + b * b], ['Resultado', a ** 3 + s * b ** 3]] })),
     { name: 'Binomio de Newton', fields: [['n', 'Exponente n (entero)'], ['a', 'a'], ['b', 'b']],
       calc: ({ n, a, b }) => { need(isInt(n) && n >= 0 && n <= 20, 'n debe ser un entero entre 0 y 20');
-        return [['Desarrollo de (a + b)ⁿ', poly(n, 1)], ['Coeficientes', Array.from({ length: n + 1 }, (_, k) => comb(n, k)).join('  ')], ['Valor numérico', (a + b) ** n]]; } },
-    { name: 'Factorizar ax² + bx + c', fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
+        return [['Desarrollo de (a + b)ⁿ', poly(n, 1)], ['Coeficientes', Array.from({ length: n + 1 }, (_, k) => comb(n, k)).join('  ')], ['Valor numérico', (a + b) ** n]]; } }] },
+
+  { name: 'Trinomios y polinomios', modes: [
+    { name: 'Cuadrado de un trinomio o más', fields: [['t', 'Términos (2 a 6, separados por coma o espacio)', 'list']],
+      calc: ({ t }) => { need(t.length >= 2 && t.length <= 6, 'Escribe entre 2 y 6 términos');
+        const L = [...'abcdef'].slice(0, t.length), cross = []; let dob = 0;
+        for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) { cross.push('2' + L[i] + L[j]); dob += 2 * t[i] * t[j]; }
+        const ss = t.reduce((x, y) => x + y * y, 0);
+        return [['Fórmula', L.map(l => l + '²').concat(cross).join(' + ')], ['Suma de cuadrados', ss], ['Dobles productos', dob], ['Resultado', ss + dob]]; } },
+    { name: 'Factorizar trinomio ax² + bx + c', fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
       calc: ({ a, b, c }) => { need(a !== 0, "'a' no puede ser 0");
         const d = b * b - 4 * a * c; if (d < 0) return [['Resultado', 'No se factoriza en los reales']];
         const r1 = (-b + sq(d)) / (2 * a), r2 = (-b - sq(d)) / (2 * a), f = r => r === 0 ? 'x' : `(x ${r < 0 ? '+' : '−'} ${fmt(Math.abs(r))})`;
-        return [['Factorizada', (a === 1 ? '' : fmt(a) + ' ') + (r1 === 0 && r2 === 0 ? 'x²' : f(r1) + f(r2))], ['Raíces', `${fmt(r1)} y ${fmt(r2)}`]]; } }] },
+        return [['Factorizada', (a === 1 ? '' : fmt(a) + ' ') + (d === 0 ? f(r1) + '²' : f(r1) + f(r2))], ['Raíces', `${fmt(r1)} y ${fmt(r2)}`], ...(d === 0 && a > 0 && c >= 0 ? [['Cuadrado perfecto', `(${fmt(sq(a))}x ${b < 0 ? '−' : '+'} ${fmt(sq(c))})²`]] : [])]; } },
+    { name: 'Factorizar cuatrinomio ax³ + bx² + cx + d', fields: [['a', 'a'], ['b', 'b'], ['c', 'c'], ['d', 'd']],
+      calc: ({ a, b, c, d }) => { need(a !== 0, "'a' no puede ser 0");
+        const { r, B, C } = cubicRoots(a, b, c, d), lead = a === 1 ? '' : fmt(a) + ' ';
+        const f = x => Math.abs(x) < 1e-9 ? 'x' : `(x ${x < 0 ? '+' : '−'} ${fmt(Math.abs(x))})`;
+        if (r.length === 1) { const m = B + r[0], n = C + r[0] * m;
+          return [['Factorizada', `${lead}${f(r[0])}(${px([1, m, n])})`], ['Raíz real', fmt(r[0])], ['Nota', 'El otro factor no tiene raíces reales']]; }
+        const g = []; r.forEach(x => { const h = g.find(e => fmt(e.x) === fmt(x)); if (h) h.n++; else g.push({ x, n: 1 }); });
+        return [['Factorizada', lead + g.map(({ x, n }) => f(x) + (n > 1 ? sup(n) : '')).join('')], ['Raíces', r.map(fmt).join(' ; ')]]; } },
+    { name: 'Multiplicar polinomios', fields: [['p', 'Polinomio 1 (coeficientes de mayor a menor grado)', 'list'], ['q', 'Polinomio 2', 'list']],
+      calc: ({ p, q }) => { need(p.length <= 7 && q.length <= 7, 'Máximo 7 coeficientes por polinomio');
+        const r = Array(p.length + q.length - 1).fill(0); p.forEach((u, i) => q.forEach((v, j) => { r[i + j] += u * v; }));
+        return [['P(x)', px(p)], ['Q(x)', px(q)], ['Producto', px(r)], ['Coeficientes', r.map(fmt).join('  ')]]; } }] },
 
   { name: 'Números', modes: [
     { name: 'MCD y MCM', fields: [['a', 'Número a'], ['b', 'Número b']],
@@ -170,20 +214,21 @@ const MODULES = [
 // Menú: los módulos de MODULES agrupados por tema.
 // Cada entrada: [grupo, nombre, módulos de MODULES que se combinan en ella]
 const MENU = [
-  ['Básico', 'Operaciones básicas', ['Operaciones básicas']],
+  ['Números y datos', 'Operaciones básicas', ['Operaciones básicas']],
+  ['Números y datos', 'Números', ['Números']],
+  ['Números y datos', 'Fracciones', ['Fracciones']],
+  ['Números y datos', 'Potencias y logaritmos', ['Potencias y logaritmos']],
+  ['Números y datos', 'Proporciones', ['Proporciones']],
+  ['Números y datos', 'Estadística', ['Estadística']],
+  ['Números y datos', 'Finanzas', ['Interés simple', 'Descuento e IVA']],
+  ['Álgebra', 'Ecuaciones', ['Ecuación lineal', 'Fórmula general']],
+  ['Álgebra', 'Binomios', ['Binomios y polinomios']],
+  ['Álgebra', 'Trinomios y más', ['Trinomios y polinomios']],
   ['Geometría', 'Círculo', ['Círculo']],
   ['Geometría', 'Puntos (x, y)', ['Distancia entre puntos', 'Punto medio']],
   ['Geometría', 'Pitágoras', ['Teorema de Pitágoras']],
   ['Geometría', 'Figuras 3D', ['Geometría 3D']],
-  ['Geometría', 'Trigonometría', ['Trigonometría']],
-  ['Álgebra', 'Ecuaciones', ['Ecuación lineal', 'Fórmula general']],
-  ['Álgebra', 'Binomios', ['Binomios y polinomios']],
-  ['Aritmética', 'Números', ['Números']],
-  ['Aritmética', 'Fracciones', ['Fracciones']],
-  ['Aritmética', 'Potencias y logaritmos', ['Potencias y logaritmos']],
-  ['Aritmética', 'Proporciones', ['Proporciones']],
-  ['Datos y finanzas', 'Estadística', ['Estadística']],
-  ['Datos y finanzas', 'Finanzas', ['Interés simple', 'Descuento e IVA']]
+  ['Geometría', 'Trigonometría', ['Trigonometría']]
 ];
 // Cada modo recibe su función de dibujo (DRAW, en dibujos.js)
 const MODS = MENU.map(([group, name, from]) => ({ group, name, modes: from.flatMap(n => {
@@ -199,6 +244,12 @@ const mode = () => MODS[mi].modes[ki];
 function btn(text, onclick) {
   const b = document.createElement('button');
   b.type = 'button'; b.textContent = text; b.onclick = onclick; return b;
+}
+
+// Botones − / + que cambian el valor según el "paso" de Ajustes
+function stepper(inp, dir, text) {
+  const b = btn(text, () => { inp.value = +((Number(inp.value) || 0) + dir * Number(CFG.step)).toFixed(10); update(); });
+  b.className = 'stp'; b.setAttribute('aria-label', dir > 0 ? 'Aumentar' : 'Disminuir'); return b;
 }
 
 function renderNav() {
@@ -220,11 +271,14 @@ function render() {
     b.setAttribute('aria-pressed', i === ki); return b;
   }) : []));
   form.replaceChildren(...mode().fields.map(([k, label, type]) => {
-    const l = document.createElement('label'), inp = document.createElement('input');
-    l.append(label, inp); inp.name = k;
+    const l = document.createElement('label'), inp = document.createElement('input'), box = document.createElement('div');
+    inp.name = k; box.className = 'num'; box.append(inp);
     if (type === 'list') inp.inputMode = 'decimal';
-    else if (type !== 'text') { inp.type = 'number'; inp.step = 'any'; }
-    return l;
+    else if (type !== 'text') {
+      inp.type = 'number'; inp.step = CFG.step;
+      box.prepend(stepper(inp, -1, '−')); box.append(stepper(inp, 1, '+'));
+    }
+    l.append(label, box); return l;
   }));
   update();
   animateIn();
@@ -289,6 +343,21 @@ $('#copy').onclick = async e => {
 };
 $('#clear').onclick = () => { form.reset(); update(); form.elements[0]?.focus(); };
 
+// ---------- Ajustes ----------
+const cfgDlg = $('#cfg'), CTRL = [['#cDec', 'dec'], ['#cPi', 'pi'], ['#cStep', 'step']];
+function applyCfg() {
+  P = CFG.pi === 'exact' ? Math.PI : CFG.pi === '22/7' ? 22 / 7 : +CFG.pi;
+  document.querySelectorAll('input[type=number]').forEach(i => { i.step = CFG.step; });
+  try { localStorage.setItem('sc-cfg', JSON.stringify(CFG)); } catch {}
+}
+const syncCtrl = () => CTRL.forEach(([sel, k]) => { $(sel).value = CFG[k]; });
+CTRL.forEach(([sel, k]) => { $(sel).onchange = e => { CFG[k] = e.target.value; applyCfg(); update(); }; });
+$('#cfgBtn').onclick = () => { syncCtrl(); cfgDlg.showModal(); };
+$('#cReset').onclick = () => { Object.assign(CFG, { dec: 'auto', pi: 'exact', step: '1' }); syncCtrl(); applyCfg(); update(); };
+$('#cClose').onclick = () => cfgDlg.close();
+cfgDlg.addEventListener('click', e => { if (e.target === cfgDlg) cfgDlg.close(); });
+
 form.addEventListener('input', update);
 form.addEventListener('submit', e => e.preventDefault());
+applyCfg();
 render();
