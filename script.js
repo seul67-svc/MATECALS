@@ -1,6 +1,15 @@
 const $ = s => document.querySelector(s);
 const P = Math.PI, sq = Math.sqrt;
 const need = (ok, msg) => { if (!ok) throw new Error(msg); };
+const AB = [['a', 'a'], ['b', 'b']];
+const isInt = (...n) => n.every(Number.isInteger);
+const gcd = (a, b) => b ? gcd(b, a % b) : Math.abs(a);
+const fact = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };
+const comb = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return Math.round(r); };
+const sup = n => String(n).replace(/[0-9]/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+// k-ésimo término de (a ± b)ⁿ, en símbolos: 3a²b, ab², b³...
+const term = (n, k) => (comb(n, k) > 1 ? comb(n, k) : '') + (n - k ? 'a' + (n - k > 1 ? sup(n - k) : '') : '') + (k ? 'b' + (k > 1 ? sup(k) : '') : '') || '1';
+const poly = (n, s) => Array.from({ length: n + 1 }, (_, k) => (k ? (s < 0 && k % 2 ? ' − ' : ' + ') : '') + term(n, k)).join('');
 
 function fmt(v) {
   if (typeof v !== 'number') return v;
@@ -90,13 +99,102 @@ const MODULES = [
     { name: 'Aplicar descuento', fields: [['p', 'Precio base ($)'], ['r', 'Porcentaje (%)']],
       calc: ({ p, r }) => [['Monto descontado', p * r / 100], ['Precio final', p - p * r / 100]] },
     { name: 'Agregar IVA / impuesto', fields: [['p', 'Precio base ($)'], ['r', 'Porcentaje (%)']],
-      calc: ({ p, r }) => [['Monto del impuesto', p * r / 100], ['Precio total', p + p * r / 100]] }] }
+      calc: ({ p, r }) => [['Monto del impuesto', p * r / 100], ['Precio total', p + p * r / 100]] }] },
+
+  { name: 'Binomios y polinomios', modes: [
+    ...[[2, 1], [2, -1], [3, 1], [3, -1]].map(([n, s]) => ({
+      name: `(a ${s > 0 ? '+' : '−'} b)${sup(n)}`, fields: AB,
+      calc: ({ a, b }) => { const t = Array.from({ length: n + 1 }, (_, k) => comb(n, k) * a ** (n - k) * (s * b) ** k);
+        return [['Desarrollo', poly(n, s)], ...t.map((v, k) => [term(n, k), v]), ['Resultado', t.reduce((x, y) => x + y, 0)]]; } })),
+    { name: '(a + b)(a − b)', fields: AB,
+      calc: ({ a, b }) => [['Desarrollo', 'a² − b²'], ['a²', a * a], ['b²', b * b], ['Resultado', a * a - b * b]] },
+    { name: 'Binomio de Newton', fields: [['n', 'Exponente n (entero)'], ['a', 'a'], ['b', 'b']],
+      calc: ({ n, a, b }) => { need(isInt(n) && n >= 0 && n <= 20, 'n debe ser un entero entre 0 y 20');
+        return [['Desarrollo de (a + b)ⁿ', poly(n, 1)], ['Coeficientes', Array.from({ length: n + 1 }, (_, k) => comb(n, k)).join('  ')], ['Valor numérico', (a + b) ** n]]; } },
+    { name: 'Factorizar ax² + bx + c', fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
+      calc: ({ a, b, c }) => { need(a !== 0, "'a' no puede ser 0");
+        const d = b * b - 4 * a * c; if (d < 0) return [['Resultado', 'No se factoriza en los reales']];
+        const r1 = (-b + sq(d)) / (2 * a), r2 = (-b - sq(d)) / (2 * a), f = r => r === 0 ? 'x' : `(x ${r < 0 ? '+' : '−'} ${fmt(Math.abs(r))})`;
+        return [['Factorizada', (a === 1 ? '' : fmt(a) + ' ') + (r1 === 0 && r2 === 0 ? 'x²' : f(r1) + f(r2))], ['Raíces', `${fmt(r1)} y ${fmt(r2)}`]]; } }] },
+
+  { name: 'Números', modes: [
+    { name: 'MCD y MCM', fields: [['a', 'Número a'], ['b', 'Número b']],
+      calc: ({ a, b }) => { need(isInt(a, b) && a > 0 && b > 0, 'Usa enteros positivos'); const g = gcd(a, b); return [['MCD', g], ['MCM', a / g * b]]; } },
+    { name: 'Factores primos', fields: [['n', 'Número entero']],
+      calc: ({ n }) => { need(isInt(n) && n > 1 && n <= 1e12, 'Usa un entero entre 2 y 10¹²');
+        let m = n, k = 0, div = 1; const f = [];
+        for (let p = 2; p * p <= m; p++) { let e = 0; while (m % p === 0) { m /= p; e++; } if (e) { f.push(p + (e > 1 ? sup(e) : '')); k += e; div *= e + 1; } }
+        if (m > 1) { f.push(m); k++; div *= 2; }
+        return [['Factorización', f.join(' × ')], ['¿Es primo?', k === 1 ? 'Sí' : 'No'], ['Cantidad de divisores', div]]; } },
+    { name: 'Combinatoria', fields: [['n', 'n'], ['r', 'r']],
+      calc: ({ n, r }) => { need(isInt(n, r) && r >= 0 && r <= n && n <= 170, 'Usa enteros con 0 ≤ r ≤ n ≤ 170');
+        let p = 1; for (let i = 0; i < r; i++) p *= n - i;
+        return [['n!', fact(n)], ['Permutaciones P(n, r)', p], ['Combinaciones C(n, r)', comb(n, r)]]; } },
+    { name: 'Decimal a otras bases', fields: [['n', 'Número entero (decimal)']],
+      calc: ({ n }) => { need(isInt(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER, 'Usa un entero mayor o igual que 0');
+        return [['Binario', n.toString(2)], ['Octal', n.toString(8)], ['Hexadecimal', n.toString(16).toUpperCase()]]; } },
+    { name: 'Otra base a decimal', fields: [['s', 'Número', 'text'], ['b', 'Base (2 a 36)']],
+      calc: ({ s, b }) => { need(isInt(b) && b >= 2 && b <= 36, 'La base va de 2 a 36');
+        const t = s.trim().toLowerCase(), n = parseInt(t, b);
+        need(/^[0-9a-z]+$/.test(t) && n.toString(b) === t.replace(/^0+(?=.)/, ''), 'Esos dígitos no existen en esa base');
+        return [['Decimal', n]]; } }] },
+
+  { name: 'Fracciones', modes: [{
+    fields: [['a', 'Numerador 1'], ['b', 'Denominador 1'], ['c', 'Numerador 2'], ['d', 'Denominador 2']],
+    calc: ({ a, b, c, d }) => {
+      need(isInt(a, b, c, d) && b !== 0 && d !== 0, 'Usa enteros y denominadores distintos de 0');
+      const fr = (n, m) => { if (m === 0) return 'No definida'; const g = gcd(n, m), s = m < 0 ? -1 : 1; n = s * n / g; m = s * m / g; return m === 1 ? String(n) : `${n}/${m} ≈ ${fmt(n / m)}`; };
+      return [['Suma', fr(a * d + c * b, b * d)], ['Resta', fr(a * d - c * b, b * d)], ['Producto', fr(a * c, b * d)], ['División', fr(a * d, b * c)]]; } }] },
+
+  { name: 'Potencias y logaritmos', modes: [
+    { name: 'Potencia', fields: [['a', 'Base'], ['n', 'Exponente']], calc: ({ a, n }) => [['aⁿ', a ** n]] },
+    { name: 'Raíz n-ésima', fields: [['x', 'Número'], ['n', 'Índice n']],
+      calc: ({ x, n }) => { need(n !== 0, 'El índice no puede ser 0'); need(x >= 0 || (Number.isInteger(n) && n % 2 !== 0), 'Raíz par de un número negativo');
+        return [['Raíz', x < 0 ? -((-x) ** (1 / n)) : x ** (1 / n)]]; } },
+    { name: 'Logaritmo', fields: [['b', 'Base'], ['x', 'Número']],
+      calc: ({ b, x }) => { need(b > 0 && b !== 1, 'La base debe ser positiva y distinta de 1'); need(x > 0, 'El número debe ser positivo');
+        return [['Log en base b', Math.log(x) / Math.log(b)], ['ln(x)', Math.log(x)], ['log₁₀(x)', Math.log10(x)]]; } }] },
+
+  { name: 'Proporciones', modes: [
+    { name: 'Regla de tres directa', fields: [['a', 'Si esto…'], ['b', '…equivale a esto'], ['c', 'entonces esto…']],
+      calc: ({ a, b, c }) => { need(a !== 0, 'El primer valor no puede ser 0'); return [['…equivale a (x)', b * c / a]]; } },
+    { name: 'Regla de tres inversa', fields: [['a', 'Si esto…'], ['b', '…equivale a esto'], ['c', 'entonces esto…']],
+      calc: ({ a, b, c }) => { need(c !== 0, 'El tercer valor no puede ser 0'); return [['…equivale a (x)', a * b / c]]; } },
+    { name: '¿Qué porcentaje es?', fields: [['a', 'Cantidad'], ['b', 'Total']],
+      calc: ({ a, b }) => { need(b !== 0, 'El total no puede ser 0'); return [['Porcentaje', fmt(a / b * 100) + ' %']]; } },
+    { name: 'Variación porcentual', fields: [['a', 'Valor inicial'], ['b', 'Valor final']],
+      calc: ({ a, b }) => { need(a !== 0, 'El valor inicial no puede ser 0'); const v = (b - a) / a * 100;
+        return [['Variación', fmt(v) + ' %'], ['Tipo', v > 0 ? 'Aumento' : v < 0 ? 'Disminución' : 'Sin cambio']]; } }] }
 ];
 
+// Menú: los módulos de MODULES agrupados por tema.
+// Cada entrada: [grupo, nombre, módulos de MODULES que se combinan en ella]
+const MENU = [
+  ['Básico', 'Operaciones básicas', ['Operaciones básicas']],
+  ['Geometría', 'Círculo', ['Círculo']],
+  ['Geometría', 'Puntos (x, y)', ['Distancia entre puntos', 'Punto medio']],
+  ['Geometría', 'Pitágoras', ['Teorema de Pitágoras']],
+  ['Geometría', 'Figuras 3D', ['Geometría 3D']],
+  ['Geometría', 'Trigonometría', ['Trigonometría']],
+  ['Álgebra', 'Ecuaciones', ['Ecuación lineal', 'Fórmula general']],
+  ['Álgebra', 'Binomios', ['Binomios y polinomios']],
+  ['Aritmética', 'Números', ['Números']],
+  ['Aritmética', 'Fracciones', ['Fracciones']],
+  ['Aritmética', 'Potencias y logaritmos', ['Potencias y logaritmos']],
+  ['Aritmética', 'Proporciones', ['Proporciones']],
+  ['Datos y finanzas', 'Estadística', ['Estadística']],
+  ['Datos y finanzas', 'Finanzas', ['Interés simple', 'Descuento e IVA']]
+];
+// Cada modo recibe su función de dibujo (DRAW, en dibujos.js)
+const MODS = MENU.map(([group, name, from]) => ({ group, name, modes: from.flatMap(n => {
+  const mod = MODULES.find(m => m.name === n), d = DRAW[n];
+  return mod.modes.map((k, i) => ({ ...k, name: k.name || n, draw: Array.isArray(d) ? d[i] : d }));
+}) }));
+
 /* ---------- Interfaz ---------- */
-const nav = $('#nav'), modesEl = $('#modes'), form = $('#form'), out = $('#out'), fig = $('#fig');
+const nav = $('#nav'), modesEl = $('#modes'), form = $('#form'), out = $('#out'), fig = $('#fig'), wrap = $('#figwrap');
 let mi = 0, ki = 0;
-const mode = () => MODULES[mi].modes[ki];
+const mode = () => MODS[mi].modes[ki];
 
 function btn(text, onclick) {
   const b = document.createElement('button');
@@ -104,16 +202,19 @@ function btn(text, onclick) {
 }
 
 function renderNav() {
-  nav.replaceChildren(...MODULES.map((m, i) => {
+  const items = []; let last;
+  MODS.forEach((m, i) => {
+    if (m.group !== last) { const h = document.createElement('p'); h.className = 'grp'; h.textContent = last = m.group; items.push(h); }
     const b = btn(m.name, () => { mi = i; ki = 0; render(); });
-    b.setAttribute('aria-current', i === mi); return b;
-  }));
+    b.setAttribute('aria-current', i === mi); items.push(b);
+  });
+  nav.replaceChildren(...items);
 }
 
 function render() {
   renderNav();
-  $('#title').textContent = MODULES[mi].name;
-  const modes = MODULES[mi].modes;
+  $('#title').textContent = MODS[mi].name;
+  const modes = MODS[mi].modes;
   modesEl.replaceChildren(...(modes.length > 1 ? modes.map((m, i) => {
     const b = btn(m.name, () => { ki = i; render(); });
     b.setAttribute('aria-pressed', i === ki); return b;
@@ -122,11 +223,12 @@ function render() {
     const l = document.createElement('label'), inp = document.createElement('input');
     l.append(label, inp); inp.name = k;
     if (type === 'list') inp.inputMode = 'decimal';
-    else { inp.type = 'number'; inp.step = 'any'; }
+    else if (type !== 'text') { inp.type = 'number'; inp.step = 'any'; }
     return l;
   }));
   update();
   animateIn();
+  if (matchMedia('(hover: hover)').matches) form.elements[0]?.focus({ preventScroll: true });
 }
 
 // Al cambiar de módulo el panel "se materializa": opacidad + escala, con curva de resorte sin rebote.
@@ -152,9 +254,10 @@ function update() {
       const a = v.split(/[\s,;]+/).filter(Boolean).map(Number);
       if (!a.length || a.some(Number.isNaN)) ok = false;
       vals[k] = a;
-    } else { vals[k] = Number(v); if (Number.isNaN(vals[k])) ok = false; }
+    } else if (type === 'text') vals[k] = v;
+    else { vals[k] = Number(v); if (Number.isNaN(vals[k])) ok = false; }
   });
-  out.replaceChildren(); fig.replaceChildren();
+  out.replaceChildren(); fig.replaceChildren(); wrap.hidden = true;
   if (!ok) return hint('Completa los datos para ver el resultado.');
   try {
     mode().calc(vals).forEach(([label, value]) => {
@@ -167,9 +270,24 @@ function update() {
 }
 
 function drawFig(vals) {
-  const d = DRAW[MODULES[mi].name], f = Array.isArray(d) ? d[ki] : d;
+  const f = mode().draw;
   try { fig.innerHTML = f ? f(vals) : ''; } catch { fig.replaceChildren(); }
+  wrap.hidden = !fig.firstChild;
 }
+
+// Dibujo en pantalla completa: <dialog> modal (Esc o tocar fuera para cerrar)
+const dlg = $('#dlg');
+$('#zoom').onclick = () => { $('#big').innerHTML = fig.innerHTML; dlg.showModal(); };
+$('#close').onclick = () => dlg.close();
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+
+$('#copy').onclick = async e => {
+  const b = e.currentTarget, text = [...out.querySelectorAll('.row')].map(r => r.firstChild.textContent + ': ' + r.lastChild.textContent).join('\n');
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); } catch { return; }
+  b.textContent = 'Copiado'; setTimeout(() => { b.textContent = 'Copiar resultados'; }, 1500);
+};
+$('#clear').onclick = () => { form.reset(); update(); form.elements[0]?.focus(); };
 
 form.addEventListener('input', update);
 form.addEventListener('submit', e => e.preventDefault());

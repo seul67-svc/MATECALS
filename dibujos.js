@@ -126,7 +126,17 @@ const barras = d => {
   }).join('') + L(20, my, W - 20, my, 'gd') + T(W - 20, my - 6, 'prom = ' + fmt(mean), 'end'));
 };
 
+// Modelo de áreas de (a + b)²: un cuadrado de lado a + b dividido en a², ab, ab y b²
+const areaBinomio = (a, b) => {
+  if (!(a > 0 && b > 0)) return '';
+  const S = 220, x0 = (W - S) / 2, y0 = 24, A = S * a / (a + b), B = S - A;
+  const cell = (x, y, w, h, t) => `<rect class="sh" x="${x}" y="${y}" width="${w}" height="${h}"/>` + (Math.min(w, h) > 34 ? T(x + w / 2, y + h / 2 + 4, t) : '');
+  return svg(cell(x0, y0, A, A, 'a²') + cell(x0 + A, y0, B, A, 'ab') + cell(x0, y0 + A, A, B, 'ab') + cell(x0 + A, y0 + A, B, B, 'b²')
+    + T(x0 + A / 2, y0 - 6, 'a') + T(x0 + A + B / 2, y0 - 6, 'b') + T(W / 2, y0 + S + 24, '(a + b)² = ' + fmt((a + b) ** 2)));
+};
+
 const DRAW = {
+  'Binomios y polinomios': [v => areaBinomio(v.a, v.b)],
   'Círculo': [v => circulo(v.r), v => circulo(sq(v.A / P)), v => circulo(v.p / (2 * P))],
   'Distancia entre puntos': v => seg(v, false),
   'Punto medio': v => seg(v, true),
