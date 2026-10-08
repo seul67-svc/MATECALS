@@ -252,14 +252,32 @@ function stepper(inp, dir, text) {
   b.className = 'stp'; b.setAttribute('aria-label', dir > 0 ? 'Aumentar' : 'Disminuir'); return b;
 }
 
+// Menú: en computadora, lista lateral con todos los módulos (.side);
+// en celular, 3 categorías que se despliegan para elegir módulo (.two)
+let openCat = null;
+const GROUPS = [...new Set(MODS.map(m => m.group))];
+function navBtn(m, i) {
+  const b = btn(m.name, () => { mi = i; ki = 0; openCat = null; render(); });
+  b.setAttribute('aria-current', i === mi); return b;
+}
 function renderNav() {
-  const items = []; let last;
+  const side = document.createElement('div'); side.className = 'side';
+  let last;
   MODS.forEach((m, i) => {
-    if (m.group !== last) { const h = document.createElement('p'); h.className = 'grp'; h.textContent = last = m.group; items.push(h); }
-    const b = btn(m.name, () => { mi = i; ki = 0; render(); });
-    b.setAttribute('aria-current', i === mi); items.push(b);
+    if (m.group !== last) { const h = document.createElement('p'); h.className = 'grp'; h.textContent = last = m.group; side.append(h); }
+    side.append(navBtn(m, i));
   });
-  nav.replaceChildren(...items);
+  const two = document.createElement('div'), cats = document.createElement('div'), drawer = document.createElement('div');
+  two.className = 'two'; cats.className = 'cats'; drawer.className = 'drawer'; drawer.hidden = openCat === null;
+  GROUPS.forEach(g => {
+    const b = btn(g, () => { openCat = openCat === g ? null : g; renderNav(); });
+    b.setAttribute('aria-expanded', openCat === g);
+    if (MODS[mi].group === g) b.dataset.here = 'true';
+    cats.append(b);
+  });
+  MODS.forEach((m, i) => { if (m.group === openCat) drawer.append(navBtn(m, i)); });
+  two.append(cats, drawer);
+  nav.replaceChildren(side, two);
 }
 
 function render() {

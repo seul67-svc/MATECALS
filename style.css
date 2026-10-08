@@ -21,7 +21,8 @@ button:active{transform:scale(.96)}
 header{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:1rem}
 h1{margin:0;font-size:1.75rem;line-height:1.1;letter-spacing:-.02em;font-weight:700}
 
-nav{display:flex;flex-direction:column;gap:.125rem}
+.side{display:flex;flex-direction:column;gap:.125rem}
+.two{display:none}
 .grp{margin:.9rem .75rem .2rem;font-size:.8rem;letter-spacing:.02em;font-weight:600;color:var(--muted)}
 .grp:first-child{margin-top:0}
 nav button{text-align:left;border:0;background:transparent;padding:.6rem .9rem;border-radius:999px;font-size:.95rem}
@@ -90,14 +91,23 @@ dialog::backdrop{background:var(--scrim);-webkit-backdrop-filter:blur(30px) satu
 @media (max-width:700px){
   .app{grid-template-columns:minmax(0,1fr)}
   .panel{padding:1.1rem;border-radius:1.75rem}
-  nav{position:sticky;top:.5rem;z-index:2;flex-direction:row;overflow-x:auto;gap:.25rem;padding:.4rem;border-radius:999px;background:var(--glass);border:1px solid var(--edge);
+  nav{position:sticky;top:.5rem;z-index:2;padding:.4rem;border-radius:1.6rem;background:var(--glass);border:1px solid var(--edge);
     -webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);box-shadow:inset 0 1px 0 var(--hi),0 .8rem 1.6rem -1rem var(--shadow)}
-  .grp{display:none}
-  nav button{white-space:nowrap}
+  .side{display:none}
+  .two{display:block}
+  .cats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem}
+  .cats button{padding:.55rem .3rem;border-radius:1.1rem;font-size:.85rem;line-height:1.2;text-align:center;text-wrap:balance}
+  .cats button::after{content:"";display:inline-block;width:.35em;height:.35em;margin-left:.45em;border:solid currentColor;border-width:0 2px 2px 0;transform:translateY(-.2em) rotate(45deg);transition:transform .2s}
+  .cats button[data-here="true"]{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+  .cats button[aria-expanded="true"]{background:var(--accent);color:var(--on-accent)}
+  .cats button[aria-expanded="true"]::after{transform:translateY(.05em) rotate(-135deg)}
+  .drawer{display:flex;flex-wrap:wrap;gap:.3rem;padding:.55rem .2rem .2rem;animation:drop .25s cubic-bezier(.2,.9,.3,1)}
+  .drawer button{border:1px solid var(--op);border-radius:999px;padding:.4rem .85rem;font-size:.9rem}
 }
+@keyframes drop{from{opacity:0;transform:translateY(-6px)}}
 @media (prefers-reduced-transparency:reduce){
   .panel,nav,.zoom{background:var(--device);-webkit-backdrop-filter:none;backdrop-filter:none}
   dialog::backdrop{background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none}
 }
 @media (prefers-contrast:more){:root{--op:var(--ink);--muted:var(--ink)}.panel,.fig svg,.big svg,input,dl{border:2px solid var(--ink)}}
-@media (prefers-reduced-motion:reduce){button{transition:none}button:active{transform:none;opacity:.7}.big svg{animation:none}}
+@media (prefers-reduced-motion:reduce){button{transition:none}button:active{transform:none;opacity:.7}.big svg,.drawer{animation:none}.cats button::after{transition:none}}
