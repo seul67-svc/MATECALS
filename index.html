@@ -3,35 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Super Calculadora</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <title>Súper Calculadora Pro</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="app">
-    <section class="calc" aria-label="Calculadora">
-      <div class="bar">
-        <h1>Super Calculadora</h1>
-        <button id="mode" type="button" aria-label="Cambiar entre grados y radianes">DEG</button>
-      </div>
-      <div class="screen">
-        <input id="expr" inputmode="none" autocomplete="off" spellcheck="false" aria-label="Expresión">
-        <output id="preview" aria-live="polite"></output>
-      </div>
-      <div id="sci" class="keys"></div>
-      <div id="main" class="keys"></div>
+    <header><h1>Súper Calculadora Pro</h1></header>
+    <nav id="nav" aria-label="Módulos"></nav>
+    <section class="panel">
+      <h2 id="title"></h2>
+      <div id="modes" class="modes"></div>
+      <form id="form" autocomplete="off"></form>
+      <figure id="fig" class="fig"></figure>
+      <dl id="out" aria-live="polite"></dl>
     </section>
-
-    <aside class="tape" aria-label="Historial">
-      <header>
-        <h2>Historial</h2>
-        <button id="clearHist" type="button">Borrar</button>
-      </header>
-      <ol id="hist"></ol>
-    </aside>
   </main>
+  <script src="dibujos.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

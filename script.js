@@ -1,185 +1,176 @@
 const $ = s => document.querySelector(s);
-const input = $('#expr'), preview = $('#preview'), histEl = $('#hist'), modeBtn = $('#mode');
-let deg = true, ans = 0, fresh = false, history = [];
-try { history = JSON.parse(localStorage.getItem('sc-history')) || []; } catch {}
+const P = Math.PI, sq = Math.sqrt;
+const need = (ok, msg) => { if (!ok) throw new Error(msg); };
 
-/* ---------- Matemáticas ---------- */
-const toRad = x => deg ? x * Math.PI / 180 : x;
-const fromRad = x => deg ? x * 180 / Math.PI : x;
-const FN = {
-  sin: x => Math.sin(toRad(x)), cos: x => Math.cos(toRad(x)), tan: x => Math.tan(toRad(x)),
-  asin: x => fromRad(Math.asin(x)), acos: x => fromRad(Math.acos(x)), atan: x => fromRad(Math.atan(x)),
-  sqrt: Math.sqrt, ln: Math.log, log: Math.log10, abs: Math.abs
-};
-const CONST = { pi: Math.PI, e: Math.E };
-const fact = n => {
-  if (!Number.isInteger(n) || n < 0 || n > 170) return NaN;
-  let r = 1; for (let i = 2; i <= n; i++) r *= i; return r;
-};
-
-// Parser propio (sin eval): suma, resta, *, /, ^, %, !, funciones, paréntesis y multiplicación implícita
-function evaluate(src) {
-  const open = (src.match(/\(/g) || []).length - (src.match(/\)/g) || []).length;
-  const tk = (src + ')'.repeat(Math.max(open, 0)))
-    .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/π/g, 'pi').replace(/√/g, 'sqrt')
-    .toLowerCase().match(/\d+\.?\d*|\.\d+|[a-z]+|\S/g) || [];
-  let i = 0;
-  const peek = () => tk[i], next = () => tk[i++];
-  const fail = () => { throw new Error('Expresión no válida'); };
-
-  function expr() {
-    let v = term();
-    while (peek() === '+' || peek() === '-') v = next() === '+' ? v + term() : v - term();
-    return v;
-  }
-  function term() {
-    let v = unary();
-    for (;;) {
-      const t = peek();
-      if (t === '*' || t === '/') { next(); const r = unary(); v = t === '*' ? v * r : v / r; }
-      else if (t === '(' || /^[a-z]/.test(t || '')) v *= power();
-      else return v;
-    }
-  }
-  function unary() {
-    if (peek() === '-') { next(); return -unary(); }
-    if (peek() === '+') { next(); return unary(); }
-    return power();
-  }
-  function power() {
-    const b = postfix();
-    if (peek() === '^') { next(); return Math.pow(b, unary()); }
-    return b;
-  }
-  function postfix() {
-    let v = primary();
-    for (;;) {
-      if (peek() === '!') { next(); v = fact(v); }
-      else if (peek() === '%') { next(); v /= 100; }
-      else return v;
-    }
-  }
-  function primary() {
-    const t = next();
-    if (t === undefined) fail();
-    if (/^[\d.]/.test(t)) return parseFloat(t);
-    if (t === '(') { const v = expr(); if (next() !== ')') fail(); return v; }
-    if (t === 'ans') return ans;
-    if (Object.hasOwn(CONST, t)) return CONST[t];
-    if (Object.hasOwn(FN, t)) {
-      if (next() !== '(') fail();
-      const v = expr(); if (next() !== ')') fail();
-      return FN[t](v);
-    }
-    fail();
-  }
-  const result = expr();
-  if (i < tk.length) fail();
-  return result;
+function fmt(v) {
+  if (typeof v !== 'number') return v;
+  if (!Number.isFinite(v)) return 'No definido';
+  if (Math.abs(v) < 1e-12) v = 0;
+  return String(parseFloat(v.toPrecision(10)));
 }
 
-function fmt(n) {
-  if (!Number.isFinite(n)) throw new Error('Resultado no válido');
-  if (Math.abs(n) < 1e-12) n = 0;
-  return String(parseFloat(n.toPrecision(12)));
-}
+/* Cada módulo tiene "modes"; cada mode tiene sus campos y una función calc
+   que devuelve filas [etiqueta, valor]. Para agregar un módulo nuevo, solo
+   añade un objeto a esta lista. */
+const MODULES = [
+  { name: 'Operaciones básicas', modes: [{
+    fields: [['a', 'Primer número'], ['b', 'Segundo número']],
+    calc: ({ a, b }) => [['Suma', a + b], ['Resta', a - b], ['Multiplicación', a * b],
+      ['División', b === 0 ? 'No se puede dividir entre cero' : a / b]] }] },
+
+  { name: 'Círculo', modes: [
+    { name: 'Tengo el radio', fields: [['r', 'Radio']],
+      calc: ({ r }) => { need(r >= 0, 'El radio no puede ser negativo');
+        return [['Diámetro', 2 * r], ['Área', P * r * r], ['Perímetro', 2 * P * r]]; } },
+    { name: 'Tengo el área', fields: [['A', 'Área']],
+      calc: ({ A }) => { need(A >= 0, 'El área no puede ser negativa'); const r = sq(A / P);
+        return [['Radio', r], ['Diámetro', 2 * r], ['Perímetro', 2 * P * r]]; } },
+    { name: 'Tengo el perímetro', fields: [['p', 'Perímetro']],
+      calc: ({ p }) => { need(p >= 0, 'El perímetro no puede ser negativo'); const r = p / (2 * P);
+        return [['Radio', r], ['Diámetro', 2 * r], ['Área', P * r * r]]; } }] },
+
+  { name: 'Distancia entre puntos', modes: [{
+    fields: [['x1', 'x₁'], ['y1', 'y₁'], ['x2', 'x₂'], ['y2', 'y₂']],
+    calc: ({ x1, y1, x2, y2 }) => [['Distancia', Math.hypot(x2 - x1, y2 - y1)]] }] },
+
+  { name: 'Punto medio', modes: [{
+    fields: [['x1', 'x₁'], ['y1', 'y₁'], ['x2', 'x₂'], ['y2', 'y₂']],
+    calc: ({ x1, y1, x2, y2 }) => [['Punto medio', `(${fmt((x1 + x2) / 2)}, ${fmt((y1 + y2) / 2)})`]] }] },
+
+  { name: 'Ecuación lineal', modes: [{
+    fields: [['a', 'a'], ['b', 'b']],
+    calc: ({ a, b }) => { need(a !== 0, "'a' no puede ser 0"); return [['x', -b / a]]; } }] },
+
+  { name: 'Fórmula general', modes: [{
+    fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
+    calc: ({ a, b, c }) => {
+      need(a !== 0, "No es cuadrática: 'a' no puede ser 0");
+      const d = b * b - 4 * a * c, rows = [['Discriminante', d]];
+      if (d > 0) rows.push(['x₁', (-b + sq(d)) / (2 * a)], ['x₂', (-b - sq(d)) / (2 * a)]);
+      else if (d === 0) rows.push(['x (única)', -b / (2 * a)]);
+      else { const re = fmt(-b / (2 * a)), im = fmt(sq(-d) / (2 * Math.abs(a)));
+        rows.push(['x₁', `${re} + ${im}i`], ['x₂', `${re} − ${im}i`]); }
+      return rows; } }] },
+
+  { name: 'Teorema de Pitágoras', modes: [
+    { name: 'Hallar la hipotenusa', fields: [['a', 'Cateto a'], ['b', 'Cateto b']],
+      calc: ({ a, b }) => [['Hipotenusa (c)', Math.hypot(a, b)]] },
+    { name: 'Hallar un cateto', fields: [['c', 'Hipotenusa c'], ['a', 'Cateto a']],
+      calc: ({ c, a }) => { need(c > a && a >= 0, 'La hipotenusa debe ser mayor que el cateto');
+        return [['Cateto (b)', sq(c * c - a * a)]]; } }] },
+
+  { name: 'Geometría 3D', modes: [
+    { name: 'Esfera', fields: [['r', 'Radio']],
+      calc: ({ r }) => [['Volumen', 4 / 3 * P * r ** 3], ['Área superficial', 4 * P * r * r]] },
+    { name: 'Cilindro', fields: [['r', 'Radio de la base'], ['h', 'Altura']],
+      calc: ({ r, h }) => [['Volumen', P * r * r * h], ['Área total', 2 * P * r * h + 2 * P * r * r]] },
+    { name: 'Cubo', fields: [['a', 'Arista']],
+      calc: ({ a }) => [['Volumen', a ** 3], ['Área total', 6 * a * a]] }] },
+
+  { name: 'Trigonometría', modes: [
+    { name: 'Seno, coseno, tangente', fields: [['g', 'Ángulo (grados)']],
+      calc: ({ g }) => { const r = g * P / 180, t = Math.tan(r);
+        return [['Seno', Math.sin(r)], ['Coseno', Math.cos(r)], ['Tangente', Math.abs(t) > 1e12 ? 'No definida' : t]]; } },
+    { name: 'Grados a radianes', fields: [['g', 'Ángulo (grados)']],
+      calc: ({ g }) => [['Radianes', g * P / 180]] },
+    { name: 'Ley de cosenos', fields: [['a', 'Lado a'], ['b', 'Lado b'], ['C', 'Ángulo C (grados)']],
+      calc: ({ a, b, C }) => [['Lado c', sq(a * a + b * b - 2 * a * b * Math.cos(C * P / 180))]] }] },
+
+  { name: 'Estadística', modes: [{
+    fields: [['d', 'Datos (separados por coma o espacio)', 'list']],
+    calc: ({ d }) => { const s = [...d].sort((x, y) => x - y), n = s.length, sum = s.reduce((x, y) => x + y, 0);
+      const med = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+      return [['Cantidad', n], ['Suma', sum], ['Promedio', sum / n], ['Mediana', med], ['Mínimo', s[0]], ['Máximo', s[n - 1]]]; } }] },
+
+  { name: 'Interés simple', modes: [{
+    fields: [['c', 'Capital inicial ($)'], ['t', 'Tasa anual (%)'], ['y', 'Tiempo (años)']],
+    calc: ({ c, t, y }) => { const i = c * t / 100 * y; return [['Interés generado', i], ['Monto total', c + i]]; } }] },
+
+  { name: 'Descuento e IVA', modes: [
+    { name: 'Aplicar descuento', fields: [['p', 'Precio base ($)'], ['r', 'Porcentaje (%)']],
+      calc: ({ p, r }) => [['Monto descontado', p * r / 100], ['Precio final', p - p * r / 100]] },
+    { name: 'Agregar IVA / impuesto', fields: [['p', 'Precio base ($)'], ['r', 'Porcentaje (%)']],
+      calc: ({ p, r }) => [['Monto del impuesto', p * r / 100], ['Precio total', p + p * r / 100]] }] }
+];
 
 /* ---------- Interfaz ---------- */
-const SCI = ['sin|sin(', 'cos|cos(', 'tan|tan(', 'ln|ln(', 'log|log(',
-  'asin|asin(', 'acos|acos(', 'atan|atan(', '√|√(', '^',
-  '(', ')', 'π', 'e', '!'];
-const MAIN = ['AC|AC|fn', '⌫|BK|fn', '%|%|fn', '÷|÷|op',
-  '7', '8', '9', '×|×|op', '4', '5', '6', '−|-|op',
-  '1', '2', '3', '+|+|op', '0', '.', 'Ans|ans|fn', '=|EQ|eq'];
+const nav = $('#nav'), modesEl = $('#modes'), form = $('#form'), out = $('#out'), fig = $('#fig');
+let mi = 0, ki = 0;
+const mode = () => MODULES[mi].modes[ki];
 
-function build(sel, list) {
-  list.forEach(spec => {
-    const [label, val = label, cls = ''] = spec.split('|');
-    const b = document.createElement('button');
-    b.type = 'button'; b.textContent = label; b.dataset.v = val; b.className = cls;
-    $(sel).append(b);
-  });
+function btn(text, onclick) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = text; b.onclick = onclick; return b;
 }
-build('#sci', SCI);
-build('#main', MAIN);
 
-function show(text, isErr = false) {
-  preview.textContent = text;
-  preview.classList.toggle('err', isErr);
+function renderNav() {
+  nav.replaceChildren(...MODULES.map((m, i) => {
+    const b = btn(m.name, () => { mi = i; ki = 0; render(); });
+    b.setAttribute('aria-current', i === mi); return b;
+  }));
+}
+
+function render() {
+  renderNav();
+  $('#title').textContent = MODULES[mi].name;
+  const modes = MODULES[mi].modes;
+  modesEl.replaceChildren(...(modes.length > 1 ? modes.map((m, i) => {
+    const b = btn(m.name, () => { ki = i; render(); });
+    b.setAttribute('aria-pressed', i === ki); return b;
+  }) : []));
+  form.replaceChildren(...mode().fields.map(([k, label, type]) => {
+    const l = document.createElement('label'), inp = document.createElement('input');
+    l.append(label, inp); inp.name = k;
+    if (type === 'list') inp.inputMode = 'decimal';
+    else { inp.type = 'number'; inp.step = 'any'; }
+    return l;
+  }));
+  update();
+  animateIn();
+}
+
+// Al cambiar de módulo el panel "se materializa": opacidad + escala, con curva de resorte sin rebote.
+// Con movimiento reducido solo hace un fundido.
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
+function animateIn() {
+  $('.panel').animate(
+    calm.matches ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }],
+    { duration: 300, easing: 'cubic-bezier(.2,.9,.3,1)' });
+}
+
+function hint(text, err) {
+  const p = document.createElement('p');
+  p.className = 'hint' + (err ? ' err' : ''); p.textContent = text; out.append(p);
 }
 
 function update() {
-  const src = input.value.trim();
-  if (!src) return show('');
-  try {
-    const s = fmt(evaluate(src));
-    show(s === src ? '' : '= ' + s);
-  } catch { show(''); }
-}
-
-function equals() {
-  const src = input.value.trim();
-  if (!src) return;
-  try {
-    const s = fmt(evaluate(src));
-    ans = parseFloat(s);
-    history = [{ e: src, r: s }, ...history].slice(0, 30);
-    save(); renderHist();
-    input.value = s; show(''); fresh = true;
-  } catch (err) { show(err.message, true); }
-}
-
-function press(v) {
-  input.focus();
-  if (v === 'EQ') return equals();
-  if (v === 'AC') input.value = '';
-  else if (v === 'BK') {
-    const s = input.selectionStart, e = input.selectionEnd;
-    if (s !== e) input.setRangeText('', s, e, 'end');
-    else if (s > 0) input.setRangeText('', s - 1, s, 'end');
-  } else {
-    if (fresh && !/^[-+×÷^%!)]/.test(v)) input.value = '';
-    input.setRangeText(v, input.selectionStart, input.selectionEnd, 'end');
-  }
-  fresh = false; update();
-}
-
-function save() { try { localStorage.setItem('sc-history', JSON.stringify(history)); } catch {} }
-
-function renderHist() {
-  histEl.replaceChildren();
-  if (!history.length) {
-    const li = document.createElement('li');
-    li.className = 'empty'; li.textContent = 'Tus cálculos aparecerán aquí.';
-    return histEl.append(li);
-  }
-  history.forEach(h => {
-    const li = document.createElement('li'), b = document.createElement('button');
-    const small = document.createElement('small'), strong = document.createElement('strong');
-    small.textContent = h.e; strong.textContent = '= ' + h.r;
-    b.type = 'button'; b.dataset.r = h.r; b.title = 'Usar este resultado';
-    b.append(small, strong); li.append(b); histEl.append(li);
+  const vals = {}; let ok = true;
+  mode().fields.forEach(([k, , type]) => {
+    const v = form.elements[k].value.trim();
+    if (!v) return (ok = false);
+    if (type === 'list') {
+      const a = v.split(/[\s,;]+/).filter(Boolean).map(Number);
+      if (!a.length || a.some(Number.isNaN)) ok = false;
+      vals[k] = a;
+    } else { vals[k] = Number(v); if (Number.isNaN(vals[k])) ok = false; }
   });
+  out.replaceChildren(); fig.replaceChildren();
+  if (!ok) return hint('Completa los datos para ver el resultado.');
+  try {
+    mode().calc(vals).forEach(([label, value]) => {
+      const row = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd');
+      row.className = 'row'; dt.textContent = label; dd.textContent = fmt(value);
+      row.append(dt, dd); out.append(row);
+    });
+    drawFig(vals);
+  } catch (e) { hint(e.message, true); }
 }
 
-/* ---------- Eventos ---------- */
-$('.calc').addEventListener('click', e => {
-  const b = e.target.closest('.keys [data-v]');
-  if (b) press(b.dataset.v);
-});
-histEl.addEventListener('click', e => {
-  const b = e.target.closest('[data-r]');
-  if (b) press(b.dataset.r);
-});
-$('#clearHist').addEventListener('click', () => { history = []; save(); renderHist(); });
-modeBtn.addEventListener('click', () => {
-  deg = !deg; modeBtn.textContent = deg ? 'DEG' : 'RAD'; update();
-});
-input.addEventListener('input', () => { fresh = false; update(); });
-input.addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); equals(); }
-  if (e.key === 'Escape') press('AC');
-});
+function drawFig(vals) {
+  const d = DRAW[MODULES[mi].name], f = Array.isArray(d) ? d[ki] : d;
+  try { fig.innerHTML = f ? f(vals) : ''; } catch { fig.replaceChildren(); }
+}
 
-renderHist();
-input.focus();
+form.addEventListener('input', update);
+form.addEventListener('submit', e => e.preventDefault());
+render();
