@@ -1,6 +1,6 @@
 /* Dibujos en SVG. Cada función recibe los valores del formulario y devuelve
    un <svg> (o '' si no hay nada que dibujar). DRAW los asocia a cada módulo. */
-const W = 400, H = 300;
+let W = 400, H = 300;   // H cambia al ampliar (ver renderAt)
 const svg = b => `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Dibujo del resultado">${b}</svg>`;
 const T = (x, y, s, a = 'middle') => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${a}">${s}</text>`;
 const L = (x1, y1, x2, y2, c = 'ln') => `<line class="${c}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
@@ -68,7 +68,7 @@ const parab = ({ a, b, c }) => {
 
 const circulo = r => {
   if (!(r > 0)) return '';
-  const cx = W / 2, cy = H / 2, R = 100, ex = cx + R * .819, ey = cy - R * .574;
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 3, ex = cx + R * .819, ey = cy - R * .574;
   return svg(`<circle class="sh" cx="${cx}" cy="${cy}" r="${R}"/>` + L(cx - R, cy, cx + R, cy, 'gd')
     + L(cx, cy, ex, ey) + dot(cx, cy) + T(cx + R * .41 + 8, cy - R * .287 - 8, 'r = ' + fmt(r), 'start')
     + T(cx, cy + 20, 'd = ' + fmt(2 * r)));
@@ -155,3 +155,15 @@ const DRAW = {
   'Trigonometría': [v => unidad(v.g, `θ = ${fmt(v.g)}°`), v => unidad(v.g, `${fmt(v.g)}° = ${fmt(v.g * P / 180)} rad`), coseno],
   'Estadística': v => barras(v.d)
 };
+
+// Dibujos que se adaptan a la proporción de la pantalla cuando se amplían
+[DRAW['Distancia entre puntos'], DRAW['Punto medio'], DRAW['Ecuación lineal'], DRAW['Fórmula general'],
+  ...DRAW['Trinomios y polinomios'].slice(1), ...DRAW['Teorema de Pitágoras'], DRAW['Trigonometría'][2], ...DRAW['Círculo']
+].forEach(f => { f.flex = true; });
+
+// Dibuja f con el alto de la pantalla (ancho fijo de 400) si es flexible; si no, con el tamaño normal
+function renderAt(f, vals, w, h) {
+  if (!f.flex) return f(vals);
+  const h0 = H; H = Math.round(400 * h / w);
+  try { return f(vals); } finally { H = h0; }
+}

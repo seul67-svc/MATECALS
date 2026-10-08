@@ -323,7 +323,9 @@ function update() {
   } catch (e) { hint(e.message, true); }
 }
 
+let lastVals;
 function drawFig(vals) {
+  lastVals = vals;
   const f = mode().draw;
   try { fig.innerHTML = f ? f(vals) : ''; } catch { fig.replaceChildren(); }
   wrap.hidden = !fig.firstChild;
@@ -331,7 +333,51 @@ function drawFig(vals) {
 
 // Dibujo en pantalla completa: <dialog> modal (Esc o tocar fuera para cerrar)
 const dlg = $('#dlg');
-$('#zoom').onclick = () => { $('#big').innerHTML = fig.innerHTML; dlg.showModal(); };
+$('#zoom').onclick = () => {
+  dlg.showModal();
+  const box = $('#big'), r = box.getBoundingClientRect(), f = mode().draw;
+  box.innerHTML = f ? renderAt(f, lastVals, r.width, r.height) : fig.innerHTML;
+  enableZoom(box);
+};
+
+// Pellizcar o rueda para acercar, arrastrar para mover, doble toque para restablecer
+function enableZoom(box) {
+  const svg = box.firstElementChild; if (!svg) return;
+  let sc = 1, tx = 0, ty = 0, tapT = 0, down = [0, 0]; const pts = new Map();
+  const apply = () => {
+    const mx = box.clientWidth * sc / 2, my = box.clientHeight * sc / 2;
+    tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty));
+    svg.style.transform = `translate(${tx}px, ${ty}px) scale(${sc})`;
+  };
+  const zoomAt = (cx, cy, k) => {
+    const s2 = Math.min(8, Math.max(1, sc * k)); k = s2 / sc;
+    tx = cx - k * (cx - tx); ty = cy - k * (cy - ty); sc = s2;
+    if (sc === 1) tx = ty = 0;
+    apply();
+  };
+  const rel = (x, y) => { const r = box.getBoundingClientRect(); return [x - r.left - r.width / 2, y - r.top - r.height / 2]; };
+  box.onpointerdown = e => { box.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); down = [e.clientX, e.clientY]; };
+  box.onpointermove = e => {
+    const prev = pts.get(e.pointerId); if (!prev) return;
+    const cur = [e.clientX, e.clientY];
+    if (pts.size === 1 && sc > 1) { tx += cur[0] - prev[0]; ty += cur[1] - prev[1]; apply(); }
+    else if (pts.size === 2) {
+      const other = [...pts].find(([id]) => id !== e.pointerId)[1];
+      const d0 = Math.hypot(prev[0] - other[0], prev[1] - other[1]), d1 = Math.hypot(cur[0] - other[0], cur[1] - other[1]);
+      const [mx, my] = rel((cur[0] + other[0]) / 2, (cur[1] + other[1]) / 2);
+      if (d0) zoomAt(mx, my, d1 / d0);
+      if (sc > 1) { tx += (cur[0] - prev[0]) / 2; ty += (cur[1] - prev[1]) / 2; apply(); }
+    }
+    pts.set(e.pointerId, cur);
+  };
+  box.onpointerup = box.onpointercancel = e => {
+    pts.delete(e.pointerId);
+    if (pts.size || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 8) return;
+    if (e.timeStamp - tapT < 320) { tapT = 0; if (sc > 1) { sc = 1; tx = ty = 0; apply(); } else zoomAt(...rel(e.clientX, e.clientY), 2.5); }
+    else tapT = e.timeStamp;
+  };
+  box.onwheel = e => { e.preventDefault(); zoomAt(...rel(e.clientX, e.clientY), Math.exp(-e.deltaY * .002)); };
+}
 $('#close').onclick = () => dlg.close();
 dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 
