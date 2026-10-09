@@ -12,6 +12,58 @@ const px = c => { const n = c.length - 1;
     return (v < 0 ? ' − ' : ' + ') + (k !== '1' || e === 0 ? k : '') + (e ? 'x' + (e > 1 ? sup(e) : '') : ''); })
     .join('').replace(/^ \+ /, '').replace(/^ − /, '−');
   return t || '0'; };
+const sumA = a => a.reduce((x, y) => x + y, 0), horner = (p, x) => p.reduce((r, v) => r * x + v, 0);
+const dpoly = p => p.slice(0, -1).map((v, i) => v * (p.length - 1 - i)), ipoly = p => [...p.map((v, i) => v / (p.length - i)), 0];
+const det3 = m => m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+const erf = x => { const t = 1 / (1 + .3275911 * Math.abs(x)), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - .284496736) * t + .254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };
+const cx = (re, im) => `${fmt(re)} ${im < 0 ? '−' : '+'} ${fmt(Math.abs(im))}i`;
+const ineq = (a, b, c, lt) => {
+  if (a === 0) return [(lt ? b < c : b > c) ? 'Siempre se cumple' : 'Nunca se cumple'];
+  const r = fmt((c - b) / a), op = lt === (a > 0) ? '<' : '>'; return [`x ${op} ${r}`, `x ${op === '<' ? '≤' : '≥'} ${r}`];
+};
+// Estadística extra: moda, rango, varianza, desviaciones y cuartiles (s ya viene ordenado)
+const statExtra = s => {
+  const n = s.length, m = sumA(s) / n, vp = sumA(s.map(v => (v - m) ** 2)) / n, cnt = {};
+  s.forEach(v => { cnt[v] = (cnt[v] || 0) + 1; });
+  const top = Math.max(...Object.values(cnt)), md = Object.keys(cnt).filter(k => cnt[k] === top), h = Math.floor(n / 2);
+  const med = a => a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
+  return [['Moda', top === 1 && n > 1 ? 'No hay' : md.join(', ')], ['Rango', s[n - 1] - s[0]], ['Varianza (población)', vp],
+    ['Desviación estándar (población)', Math.sqrt(vp)], ...(n > 1 ? [['Desviación estándar (muestra)', Math.sqrt(vp * n / (n - 1))]] : []),
+    ['Q1', med(s.slice(0, h))], ['Q3', med(s.slice(n - h))]];
+};
+// Recta que pasa por dos puntos: pendiente, ecuaciones y ángulo
+const recta = (x1, y1, x2, y2) => {
+  need(x1 !== x2 || y1 !== y2, 'Los dos puntos deben ser distintos');
+  const A = y2 - y1, B = x1 - x2, C = -(A * x1 + B * y1), ang = ((Math.atan2(A, -B) * 180 / Math.PI) % 180 + 180) % 180;
+  const gen = `${fmt(A)}x ${B < 0 ? '−' : '+'} ${fmt(Math.abs(B))}y ${C < 0 ? '−' : '+'} ${fmt(Math.abs(C))} = 0`;
+  if (B === 0) return [['Ecuación', 'x = ' + fmt(x1)], ['Pendiente', 'No definida (recta vertical)'], ['Forma general', gen], ['Ángulo de inclinación', 90]];
+  const m = -A / B, b = -C / B;
+  return [['Pendiente m', m], ['Ordenada b', b], ['Ecuación', 'y = ' + px([m, b])], ['Forma general', gen], ['Ángulo de inclinación', ang]];
+};
+// Evaluador de expresiones (sin eval): + − * / ^ ! % ( ), funciones, constantes y variables (vars)
+function evalExpr(src, vars = {}, deg = false) {
+  const open = (src.match(/\(/g) || []).length - (src.match(/\)/g) || []).length;
+  const tk = (src + ')'.repeat(Math.max(open, 0))).replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/π/g, 'pi').replace(/√/g, 'sqrt')
+    .toLowerCase().match(/\d+\.?\d*|\.\d+|[a-z]+|\S/g) || [];
+  let i = 0; const peek = () => tk[i], next = () => tk[i++], bad = () => { throw new Error('Expresión no válida'); };
+  const R = x => deg ? x * Math.PI / 180 : x, U = x => deg ? x * 180 / Math.PI : x;
+  const F = { sin: x => Math.sin(R(x)), cos: x => Math.cos(R(x)), tan: x => Math.tan(R(x)), asin: x => U(Math.asin(x)), acos: x => U(Math.acos(x)), atan: x => U(Math.atan(x)),
+    sqrt: Math.sqrt, cbrt: Math.cbrt, ln: Math.log, log: Math.log10, abs: Math.abs, exp: Math.exp, floor: Math.floor, ceil: Math.ceil, round: Math.round };
+  const K = { pi: Math.PI, e: Math.E, ...vars };
+  const expr = () => { let v = term(); while (peek() === '+' || peek() === '-') v = next() === '+' ? v + term() : v - term(); return v; };
+  const term = () => { let v = unary(); for (;;) { const t = peek();
+    if (t === '*' || t === '/') { next(); const r = unary(); v = t === '*' ? v * r : v / r; } else if (t === '(' || /^[a-z]/.test(t || '')) v *= power(); else return v; } };
+  const unary = () => { if (peek() === '-') { next(); return -unary(); } if (peek() === '+') { next(); return unary(); } return power(); };
+  const power = () => { const b = postfix(); if (peek() === '^') { next(); return Math.pow(b, unary()); } return b; };
+  const postfix = () => { let v = primary(); for (;;) { if (peek() === '!') { next(); v = fact(v); } else if (peek() === '%') { next(); v /= 100; } else return v; } };
+  const primary = () => { const t = next(); if (t === undefined) bad();
+    if (/^[\d.]/.test(t)) return parseFloat(t);
+    if (t === '(') { const v = expr(); if (next() !== ')') bad(); return v; }
+    if (Object.hasOwn(K, t)) return K[t];
+    if (Object.hasOwn(F, t)) { if (next() !== '(') bad(); const v = expr(); if (next() !== ')') bad(); return F[t](v); }
+    return bad(); };
+  const r = expr(); if (i < tk.length) bad(); return r;
+}
 // Raíces reales de ax³ + bx² + cx + d (Cardano / método trigonométrico)
 const cubicRoots = (a, b, c, d) => {
   const B = b / a, C = c / a, D = d / a, p = C - B * B / 3, q = 2 * B ** 3 / 27 - B * C / 3 + D, sh = -B / 3;
@@ -27,7 +79,7 @@ const isInt = (...n) => n.every(Number.isInteger);
 const gcd = (a, b) => b ? gcd(b, a % b) : Math.abs(a);
 const fact = n => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };
 const comb = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return Math.round(r); };
-const sup = n => String(n).replace(/[0-9]/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+const sup = n => String(n).replace(/[0-9-]/g, d => d === '-' ? '⁻' : '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
 // k-ésimo término de (a ± b)ⁿ, en símbolos: 3a²b, ab², b³...
 const term = (n, k) => (comb(n, k) > 1 ? comb(n, k) : '') + (n - k ? 'a' + (n - k > 1 ? sup(n - k) : '') : '') + (k ? 'b' + (k > 1 ? sup(k) : '') : '') || '1';
 const poly = (n, s) => Array.from({ length: n + 1 }, (_, k) => (k ? (s < 0 && k % 2 ? ' − ' : ' + ') : '') + term(n, k)).join('');
@@ -95,7 +147,10 @@ const MODULES = [
     { name: 'Cilindro', fields: [['r', 'Radio de la base'], ['h', 'Altura']],
       calc: ({ r, h }) => [['Volumen', P * r * r * h], ['Área total', 2 * P * r * h + 2 * P * r * r]] },
     { name: 'Cubo', fields: [['a', 'Arista']],
-      calc: ({ a }) => [['Volumen', a ** 3], ['Área total', 6 * a * a]] }] },
+      calc: ({ a }) => [['Volumen', a ** 3], ['Área total', 6 * a * a]] },
+    { name: 'Cono', fields: [['r', 'Radio'], ['h', 'Altura']], calc: ({ r, h }) => { const g = Math.hypot(r, h); return [['Volumen', P * r * r * h / 3], ['Generatriz', g], ['Área lateral', P * r * g], ['Área total', P * r * (r + g)]]; } },
+    { name: 'Pirámide cuadrada', fields: [['a', 'Lado de la base'], ['h', 'Altura']], calc: ({ a, h }) => { const ap = Math.hypot(h, a / 2); return [['Volumen', a * a * h / 3], ['Apotema', ap], ['Área lateral', 2 * a * ap], ['Área total', a * a + 2 * a * ap]]; } },
+    { name: 'Prisma rectangular', fields: [['a', 'Largo'], ['b', 'Ancho'], ['c', 'Alto']], calc: ({ a, b, c }) => [['Volumen', a * b * c], ['Área total', 2 * (a * b + b * c + a * c)], ['Diagonal', Math.hypot(a, b, c)]] }] },
 
   { name: 'Trigonometría', modes: [
     { name: 'Seno, coseno, tangente', fields: [['g', 'Ángulo (grados)']],
@@ -104,13 +159,16 @@ const MODULES = [
     { name: 'Grados a radianes', fields: [['g', 'Ángulo (grados)']],
       calc: ({ g }) => [['Radianes', g * P / 180]] },
     { name: 'Ley de cosenos', fields: [['a', 'Lado a'], ['b', 'Lado b'], ['C', 'Ángulo C (grados)']],
-      calc: ({ a, b, C }) => [['Lado c', sq(a * a + b * b - 2 * a * b * Math.cos(C * P / 180))]] }] },
+      calc: ({ a, b, C }) => [['Lado c', sq(a * a + b * b - 2 * a * b * Math.cos(C * P / 180))]] },
+    { name: 'Ley de senos', fields: [['a', 'Lado a'], ['A', 'Ángulo A (grados)'], ['B', 'Ángulo B (grados)']],
+      calc: ({ a, A, B }) => { need(a > 0 && A > 0 && B > 0 && A + B < 180, 'Usa a > 0 y A + B menor que 180°'); const C = 180 - A - B, k = a / Math.sin(A * P / 180);
+        return [['Ángulo C', C], ['Lado b', k * Math.sin(B * P / 180)], ['Lado c', k * Math.sin(C * P / 180)]]; } }] },
 
   { name: 'Estadística', modes: [{
     fields: [['d', 'Datos (separados por coma o espacio)', 'list']],
     calc: ({ d }) => { const s = [...d].sort((x, y) => x - y), n = s.length, sum = s.reduce((x, y) => x + y, 0);
       const med = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
-      return [['Cantidad', n], ['Suma', sum], ['Promedio', sum / n], ['Mediana', med], ['Mínimo', s[0]], ['Máximo', s[n - 1]]]; } }] },
+      return [['Cantidad', n], ['Suma', sum], ['Promedio', sum / n], ['Mediana', med], ['Mínimo', s[0]], ['Máximo', s[n - 1]], ...statExtra(s)]; } }] },
 
   { name: 'Interés simple', modes: [{
     fields: [['c', 'Capital inicial ($)'], ['t', 'Tasa anual (%)'], ['y', 'Tiempo (años)']],
@@ -156,10 +214,159 @@ const MODULES = [
           return [['Factorizada', `${lead}${f(r[0])}(${px([1, m, n])})`], ['Raíz real', fmt(r[0])], ['Nota', 'El otro factor no tiene raíces reales']]; }
         const g = []; r.forEach(x => { const h = g.find(e => fmt(e.x) === fmt(x)); if (h) h.n++; else g.push({ x, n: 1 }); });
         return [['Factorizada', lead + g.map(({ x, n }) => f(x) + (n > 1 ? sup(n) : '')).join('')], ['Raíces', r.map(fmt).join(' ; ')]]; } },
+    { name: 'Dividir polinomios', fields: [['p', 'Dividendo (coeficientes)', 'list'], ['q', 'Divisor (coeficientes)', 'list']],
+      calc: ({ p, q }) => { need(q[0] !== 0 && q.length <= p.length, 'El divisor debe tener grado menor o igual y empezar con un coeficiente distinto de 0');
+        const r = [...p], out = [];
+        for (let i = 0; i <= p.length - q.length; i++) { const k = r[i] / q[0]; out.push(k); q.forEach((v, j) => { r[i + j] -= k * v; }); }
+        return [['Cociente', px(out)], ['Residuo', px(r.slice(p.length - q.length + 1))]]; } },
     { name: 'Multiplicar polinomios', fields: [['p', 'Polinomio 1 (coeficientes de mayor a menor grado)', 'list'], ['q', 'Polinomio 2', 'list']],
       calc: ({ p, q }) => { need(p.length <= 7 && q.length <= 7, 'Máximo 7 coeficientes por polinomio');
         const r = Array(p.length + q.length - 1).fill(0); p.forEach((u, i) => q.forEach((v, j) => { r[i + j] += u * v; }));
         return [['P(x)', px(p)], ['Q(x)', px(q)], ['Producto', px(r)], ['Coeficientes', r.map(fmt).join('  ')]]; } }] },
+
+  { name: 'Calculadora libre', modes: ['Grados', 'Radianes'].map((n, i) => ({ name: n, fields: [['e', 'Expresión (ej. sin(30) + 2^3)', 'text']],
+    calc: ({ e }) => [['Resultado', evalExpr(e, {}, i === 0)]] })) },
+
+  { name: 'Graficador f(x)', modes: [
+    { name: 'Gráfica y ceros', fields: [['f', 'f(x) = (ej. x^2 − 3x + 1)', 'text']],
+      calc: ({ f }) => { const g = x => evalExpr(f, { x }), zs = []; let x0 = -10, y0 = g(-10);
+        for (let i = 1; i <= 400; i++) { const x = -10 + i * .05, y = g(x);
+          if (Number.isFinite(y0) && Number.isFinite(y) && y0 * y <= 0 && Math.abs(y - y0) < 50) {
+            let lo = x0, hi = x; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (g(lo) * g(mid) <= 0) hi = mid; else lo = mid; } zs.push(fmt((lo + hi) / 2)); }
+          x0 = x; y0 = y; }
+        return [['f(0)', g(0)], ['Ceros en [−10, 10]', zs.length ? [...new Set(zs)].slice(0, 8).join(' ; ') : 'Ninguno']]; } },
+    { name: 'Valor en un punto', fields: [['f', 'f(x) =', 'text'], ['x', 'x']], calc: ({ f, x }) => [['f(x)', evalExpr(f, { x })]] },
+    { name: 'Límite', fields: [['f', 'f(x) =', 'text'], ['a', 'x tiende a']],
+      calc: ({ f, a }) => { const l = evalExpr(f, { x: a - 1e-7 }), r = evalExpr(f, { x: a + 1e-7 });
+        return [['Por la izquierda', l], ['Por la derecha', r], ['Límite', Math.abs(l - r) < 1e-4 * Math.max(1, Math.abs(l)) ? (l + r) / 2 : 'No existe']]; } }] },
+
+  { name: 'Sistemas de ecuaciones', modes: [
+    { name: '2×2', fields: [['a', 'a₁ (de a₁x + b₁y = c₁)'], ['b', 'b₁'], ['c', 'c₁'], ['d', 'a₂ (de a₂x + b₂y = c₂)'], ['e', 'b₂'], ['f', 'c₂']],
+      calc: ({ a, b, c, d, e, f }) => { const D = a * e - b * d;
+        if (Math.abs(D) < 1e-12) return [['Resultado', a * f - c * d === 0 && b * f - c * e === 0 ? 'Infinitas soluciones (rectas iguales)' : 'Sin solución (rectas paralelas)']];
+        return [['x', (c * e - b * f) / D], ['y', (a * f - c * d) / D], ['Determinante', D]]; } },
+    { name: '3×3 (Cramer)', fields: [['m', 'Coeficientes por fila: a b c d (12 números)', 'list']],
+      calc: ({ m }) => { need(m.length === 12, 'Escribe 12 números: a b c d de cada ecuación');
+        const A = [0, 1, 2].flatMap(i => [0, 1, 2].map(k => m[i * 4 + k])), col = j => A.map((v, n) => n % 3 === j ? m[Math.floor(n / 3) * 4 + 3] : v), D = det3(A);
+        need(Math.abs(D) > 1e-12, 'Sin solución única (determinante 0)');
+        return [['x', det3(col(0)) / D], ['y', det3(col(1)) / D], ['z', det3(col(2)) / D], ['Determinante', D]]; } }] },
+
+  { name: 'Desigualdades', modes: [
+    ...[['ax + b < c', true], ['ax + b > c', false]].map(([name, lt]) => ({ name, fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
+      calc: ({ a, b, c }) => { const t = ineq(a, b, c, lt); return [['Solución', t[0]], ...(t[1] ? [[lt ? 'Con igualdad (≤)' : 'Con igualdad (≥)', t[1]]] : [])]; } })),
+    ...[['|ax + b| = c', 0], ['|ax + b| < c', 1], ['|ax + b| > c', 2]].map(([name, t]) => ({ name, fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
+      calc: ({ a, b, c }) => { need(a !== 0, "'a' no puede ser 0"); const r1 = (-c - b) / a, r2 = (c - b) / a, lo = fmt(Math.min(r1, r2)), hi = fmt(Math.max(r1, r2));
+        if (t === 0) return [['Solución', c < 0 ? 'Sin solución' : c === 0 ? `x = ${lo}` : `x = ${lo}  o  x = ${hi}`]];
+        if (t === 1) return [['Solución', c <= 0 ? 'Sin solución' : `${lo} < x < ${hi}`]];
+        return [['Solución', c < 0 ? 'Todos los reales' : `x < ${lo}  o  x > ${hi}`]]; } }))] },
+
+  { name: 'Matrices', modes: [
+    { name: 'Determinante', fields: [['m', 'Elementos por filas (4 para 2×2, 9 para 3×3)', 'list']],
+      calc: ({ m }) => { need(m.length === 4 || m.length === 9, 'Escribe 4 números (2×2) o 9 (3×3)'); return [['Determinante', m.length === 4 ? m[0] * m[3] - m[1] * m[2] : det3(m)]]; } },
+    { name: 'Inversa 2×2', fields: [['m', 'Elementos por filas (4 números)', 'list']],
+      calc: ({ m }) => { need(m.length === 4, 'Escribe 4 números'); const D = m[0] * m[3] - m[1] * m[2]; need(D !== 0, 'No tiene inversa (determinante 0)');
+        const r = [m[3], -m[1], -m[2], m[0]].map(v => fmt(v / D)); return [['Determinante', D], ['Inversa', `[${r[0]}  ${r[1]}]  [${r[2]}  ${r[3]}]`]]; } },
+    { name: 'Multiplicar 2×2', fields: [['p', 'Matriz A (4 números)', 'list'], ['q', 'Matriz B (4 números)', 'list']],
+      calc: ({ p, q }) => { need(p.length === 4 && q.length === 4, 'Cada matriz lleva 4 números');
+        const r = [p[0] * q[0] + p[1] * q[2], p[0] * q[1] + p[1] * q[3], p[2] * q[0] + p[3] * q[2], p[2] * q[1] + p[3] * q[3]].map(fmt);
+        return [['A × B', `[${r[0]}  ${r[1]}]  [${r[2]}  ${r[3]}]`]]; } }] },
+
+  { name: 'Números complejos', modes: [
+    { name: 'Operaciones', fields: [['a', 'a (de a + bi)'], ['b', 'b'], ['c', 'c (de c + di)'], ['d', 'd']],
+      calc: ({ a, b, c, d }) => { const q = c * c + d * d;
+        return [['Suma', cx(a + c, b + d)], ['Resta', cx(a - c, b - d)], ['Producto', cx(a * c - b * d, a * d + b * c)], ['División', q ? cx((a * c + b * d) / q, (b * c - a * d) / q) : 'No definida']]; } },
+    { name: 'Forma polar', fields: [['a', 'a (de a + bi)'], ['b', 'b']],
+      calc: ({ a, b }) => { const r = Math.hypot(a, b), t = Math.atan2(b, a) * 180 / Math.PI;
+        return [['Módulo', r], ['Ángulo (grados)', t], ['Polar', `${fmt(r)}(cos ${fmt(t)}° + i sen ${fmt(t)}°)`], ['Conjugado', cx(a, -b)]]; } }] },
+
+  { name: 'Progresiones', modes: [
+    { name: 'Aritmética', fields: [['a', 'Primer término a₁'], ['d', 'Diferencia d'], ['n', 'Número de términos n']],
+      calc: ({ a, d, n }) => { need(isInt(n) && n >= 1, 'n debe ser un entero positivo'); return [['Último término aₙ', a + (n - 1) * d], ['Suma Sₙ', n * (2 * a + (n - 1) * d) / 2]]; } },
+    { name: 'Geométrica', fields: [['a', 'Primer término a₁'], ['r', 'Razón r'], ['n', 'Número de términos n']],
+      calc: ({ a, r, n }) => { need(isInt(n) && n >= 1, 'n debe ser un entero positivo');
+        return [['Último término aₙ', a * r ** (n - 1)], ['Suma Sₙ', r === 1 ? n * a : a * (r ** n - 1) / (r - 1)], ['Suma infinita', Math.abs(r) < 1 ? a / (1 - r) : 'No converge']]; } }] },
+
+  { name: 'Derivadas e integrales', modes: [
+    { name: 'Derivada', fields: [['p', 'Polinomio (coeficientes de mayor a menor grado)', 'list']], calc: ({ p }) => [['f(x)', px(p)], ['f′(x)', px(dpoly(p))], ['f″(x)', px(dpoly(dpoly(p)))]] },
+    { name: 'Integral indefinida', fields: [['p', 'Polinomio (coeficientes de mayor a menor grado)', 'list']], calc: ({ p }) => [['f(x)', px(p)], ['∫ f(x) dx', px(ipoly(p)) + ' + C']] },
+    { name: 'Integral definida', fields: [['p', 'Polinomio (coeficientes)', 'list'], ['a', 'Límite inferior a'], ['b', 'Límite superior b']],
+      calc: ({ p, a, b }) => { const F = ipoly(p); return [['F(x)', px(F)], ['Integral de a a b', horner(F, b) - horner(F, a)]]; } }] },
+
+  { name: 'Recta', modes: [
+    { name: 'Por dos puntos', fields: [['x1', 'x₁'], ['y1', 'y₁'], ['x2', 'x₂'], ['y2', 'y₂']], calc: v => recta(v.x1, v.y1, v.x2, v.y2) },
+    { name: 'Punto y pendiente', fields: [['x1', 'x₁'], ['y1', 'y₁'], ['m', 'Pendiente m']], calc: v => recta(v.x1, v.y1, v.x1 + 1, v.y1 + v.m) },
+    { name: 'Distancia punto a recta', fields: [['A', 'A (de Ax + By + C = 0)'], ['B', 'B'], ['C', 'C'], ['x', 'x del punto'], ['y', 'y del punto']],
+      calc: ({ A, B, C, x, y }) => { need(A !== 0 || B !== 0, 'A y B no pueden ser ambos 0'); return [['Distancia', Math.abs(A * x + B * y + C) / Math.hypot(A, B)]]; } }] },
+
+  { name: 'Áreas planas', modes: [
+    { name: 'Triángulo', fields: [['b', 'Base'], ['h', 'Altura']], calc: ({ b, h }) => [['Área', b * h / 2]] },
+    { name: 'Triángulo (Herón)', fields: [['a', 'Lado a'], ['b', 'Lado b'], ['c', 'Lado c']],
+      calc: ({ a, b, c }) => { need(a > 0 && b > 0 && c > 0 && a + b > c && a + c > b && b + c > a, 'Esos lados no forman un triángulo'); const s = (a + b + c) / 2; return [['Perímetro', 2 * s], ['Área', sq(s * (s - a) * (s - b) * (s - c))]]; } },
+    { name: 'Trapecio', fields: [['B', 'Base mayor'], ['b', 'Base menor'], ['h', 'Altura']], calc: ({ B, b, h }) => [['Área', (B + b) * h / 2]] },
+    { name: 'Polígono regular', fields: [['n', 'Número de lados'], ['l', 'Lado']],
+      calc: ({ n, l }) => { need(isInt(n) && n >= 3 && l > 0, 'Usa n entero ≥ 3 y un lado positivo'); const ap = l / (2 * Math.tan(P / n)); return [['Perímetro', n * l], ['Apotema', ap], ['Área', n * l * ap / 2]]; } }] },
+
+  { name: 'Vectores', modes: [{ fields: [['u', 'Vector u (2 o 3 componentes)', 'list'], ['v', 'Vector v (mismas componentes)', 'list']],
+    calc: ({ u, v }) => { need((u.length === 2 || u.length === 3) && u.length === v.length, 'Escribe 2 o 3 componentes en cada vector');
+      const dot = sumA(u.map((x, i) => x * v[i])), nu = Math.hypot(...u), nv = Math.hypot(...v), t = a => '(' + a.map(fmt).join(', ') + ')';
+      const cr = u.length === 3 ? [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]] : null;
+      return [['u + v', t(u.map((x, i) => x + v[i]))], ['u − v', t(u.map((x, i) => x - v[i]))], ['Producto punto', dot], ['|u|', nu], ['|v|', nv],
+        ['Ángulo (grados)', nu && nv ? Math.acos(Math.max(-1, Math.min(1, dot / (nu * nv)))) * 180 / Math.PI : 'No definido'], ...(cr ? [['Producto cruz', t(cr)]] : [])]; } }] },
+
+  { name: 'Cónicas', modes: [
+    { name: 'Circunferencia', fields: [['h', 'Centro h'], ['k', 'Centro k'], ['r', 'Radio r']],
+      calc: ({ h, k, r }) => { need(r > 0, 'El radio debe ser positivo'); const t = z => `${z < 0 ? '+' : '−'} ${fmt(Math.abs(z))}`, g = (v, s) => ` ${v < 0 ? '−' : '+'} ${fmt(Math.abs(v))}${s}`;
+        return [['Ecuación', `(x ${t(h)})² + (y ${t(k)})² = ${fmt(r * r)}`], ['Forma general', `x² + y²${g(-2 * h, 'x')}${g(-2 * k, 'y')}${g(h * h + k * k - r * r, '')} = 0`], ['Área', P * r * r], ['Perímetro', 2 * P * r]]; } },
+    { name: 'Elipse', fields: [['a', 'Semieje a'], ['b', 'Semieje b']],
+      calc: ({ a, b }) => { need(a > 0 && b > 0, 'Los semiejes deben ser positivos'); const c = sq(Math.abs(a * a - b * b));
+        return [['Distancia focal c', c], ['Excentricidad', c / Math.max(a, b)], ['Área', P * a * b], ['Perímetro (aprox.)', P * (3 * (a + b) - sq((3 * a + b) * (a + 3 * b)))]]; } },
+    { name: 'Parábola y = ax² + bx + c', fields: [['a', 'a'], ['b', 'b'], ['c', 'c']],
+      calc: ({ a, b, c }) => { need(a !== 0, "'a' no puede ser 0"); const xv = -b / (2 * a), yv = c - b * b / (4 * a);
+        return [['Vértice', `(${fmt(xv)}, ${fmt(yv)})`], ['Foco', `(${fmt(xv)}, ${fmt(yv + 1 / (4 * a))})`], ['Directriz', 'y = ' + fmt(yv - 1 / (4 * a))], ['Eje de simetría', 'x = ' + fmt(xv)]]; } }] },
+
+  { name: 'Probabilidad', modes: [
+    { name: 'Regresión lineal', fields: [['x', 'Valores de x', 'list'], ['y', 'Valores de y', 'list']],
+      calc: ({ x, y }) => { need(x.length === y.length && x.length >= 2, 'x e y deben tener la misma cantidad (mínimo 2)');
+        const n = x.length, mx = sumA(x) / n, my = sumA(y) / n, sxy = sumA(x.map((v, i) => (v - mx) * (y[i] - my))), sxx = sumA(x.map(v => (v - mx) ** 2)), syy = sumA(y.map(v => (v - my) ** 2));
+        need(sxx > 0, 'Los valores de x no pueden ser todos iguales'); const m = sxy / sxx, b = my - m * mx, r = syy ? sxy / sq(sxx * syy) : 1;
+        return [['Recta', 'y = ' + px([m, b])], ['Pendiente m', m], ['Ordenada b', b], ['Correlación r', r], ['R²', r * r]]; } },
+    { name: 'Binomial', fields: [['n', 'Ensayos n'], ['p', 'Probabilidad de éxito p (0 a 1)'], ['k', 'Éxitos k']],
+      calc: ({ n, p, k }) => { need(isInt(n, k) && n >= 0 && n <= 170 && k >= 0 && k <= n && p >= 0 && p <= 1, 'Usa n y k enteros (0 ≤ k ≤ n ≤ 170) y p entre 0 y 1');
+        const f = j => comb(n, j) * p ** j * (1 - p) ** (n - j); let lo = 0; for (let j = 0; j <= k; j++) lo += f(j);
+        return [['P(X = k)', f(k)], ['P(X ≤ k)', lo], ['P(X ≥ k)', 1 - lo + f(k)], ['Media', n * p], ['Desviación estándar', sq(n * p * (1 - p))]]; } },
+    { name: 'Normal', fields: [['m', 'Media μ'], ['s', 'Desviación σ'], ['x', 'Valor x']],
+      calc: ({ m, s, x }) => { need(s > 0, 'σ debe ser positiva'); const z = (x - m) / s, c = (1 + erf(z / Math.SQRT2)) / 2; return [['z', z], ['P(X ≤ x)', c], ['P(X ≥ x)', 1 - c]]; } }] },
+
+  { name: 'Interés compuesto y préstamos', modes: [
+    { name: 'Interés compuesto', fields: [['c', 'Capital inicial ($)'], ['t', 'Tasa anual (%)'], ['y', 'Tiempo (años)'], ['n', 'Capitalizaciones por año']],
+      calc: ({ c, t, y, n }) => { need(n > 0, 'Las capitalizaciones por año deben ser mayores que 0'); const m = c * (1 + t / 100 / n) ** (n * y); return [['Monto final', m], ['Interés ganado', m - c]]; } },
+    { name: 'Pago de un préstamo', fields: [['c', 'Monto del préstamo ($)'], ['t', 'Tasa anual (%)'], ['m', 'Plazo (meses)']],
+      calc: ({ c, t, m }) => { need(isInt(m) && m > 0, 'El plazo debe ser un número entero de meses'); const i = t / 1200, q = i === 0 ? c / m : c * i / (1 - (1 + i) ** -m);
+        return [['Cuota mensual', q], ['Total pagado', q * m], ['Intereses', q * m - c]]; } }] },
+
+  { name: 'Conversor de unidades', modes: [
+    { name: 'Temperatura desde °C', fields: [['v', 'Grados °C']], calc: ({ v }) => [['°F', v * 9 / 5 + 32], ['K', v + 273.15]] },
+    { name: 'Temperatura desde °F', fields: [['v', 'Grados °F']], calc: ({ v }) => [['°C', (v - 32) * 5 / 9], ['K', (v - 32) * 5 / 9 + 273.15]] },
+    { name: 'Longitud desde metros', fields: [['v', 'Metros']], calc: ({ v }) => [['km', v / 1000], ['cm', v * 100], ['mm', v * 1000], ['pulgadas', v / .0254], ['pies', v / .3048], ['yardas', v / .9144], ['millas', v / 1609.344]] },
+    { name: 'Masa desde kg', fields: [['v', 'Kilogramos']], calc: ({ v }) => [['g', v * 1000], ['mg', v * 1e6], ['libras', v / .45359237], ['onzas', v / .028349523125]] },
+    { name: 'Notación científica', fields: [['v', 'Número']],
+      calc: ({ v }) => { need(v !== 0, 'Usa un número distinto de 0'); const [m, e] = v.toExponential(6).split('e'); return [['Notación científica', `${fmt(+m)} × 10${sup(+e)}`]]; } }] },
+
+  { name: 'Otros números', modes: [
+    { name: 'Decimal a fracción', fields: [['v', 'Número decimal']],
+      calc: ({ v }) => { const sg = v < 0 ? -1 : 1, w = Math.abs(v); let h0 = 1, h1 = Math.trunc(w), k0 = 0, k1 = 1, x = w - Math.trunc(w), i = 0;
+        while (Math.abs(w - h1 / k1) > 1e-9 && x && i++ < 20) { x = 1 / x; const a = Math.floor(x); [h0, h1] = [h1, a * h1 + h0]; [k0, k1] = [k1, a * k1 + k0]; x -= a; }
+        return [['Fracción', k1 === 1 ? String(sg * h1) : `${sg * h1}/${k1}`]]; } },
+    { name: 'Decimal a romano', fields: [['n', 'Número (1 a 3999)']],
+      calc: ({ n }) => { need(isInt(n) && n >= 1 && n <= 3999, 'Usa un entero de 1 a 3999'); let r = '', m = n;
+        [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']].forEach(([v, t]) => { while (m >= v) { r += t; m -= v; } });
+        return [['Romano', r]]; } },
+    { name: 'Romano a decimal', fields: [['s', 'Número romano', 'text']],
+      calc: ({ s }) => { const t = s.trim().toUpperCase(), val = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 }; need(/^[IVXLCDM]+$/.test(t), 'Usa solo I, V, X, L, C, D, M');
+        return [['Decimal', [...t].reduce((a, ch, i, arr) => a + (val[ch] < (val[arr[i + 1]] || 0) ? -val[ch] : val[ch]), 0)]]; } },
+    { name: 'Fibonacci', fields: [['n', 'Posición n (0 a 70)']],
+      calc: ({ n }) => { need(isInt(n) && n >= 0 && n <= 70, 'Usa un entero de 0 a 70'); const f = [0, 1]; for (let i = 2; i <= Math.max(n, 14); i++) f.push(f[i - 1] + f[i - 2]);
+        return [['F(n)', f[n]], ['Primeros términos', f.slice(0, 15).join(', ')]]; } }] },
 
   { name: 'Números', modes: [
     { name: 'MCD y MCM', fields: [['a', 'Número a'], ['b', 'Número b']],
@@ -214,21 +421,36 @@ const MODULES = [
 // Menú: los módulos de MODULES agrupados por tema.
 // Cada entrada: [grupo, nombre, módulos de MODULES que se combinan en ella]
 const MENU = [
+  ['Números y datos', 'Calculadora libre', ['Calculadora libre']],
   ['Números y datos', 'Operaciones básicas', ['Operaciones básicas']],
   ['Números y datos', 'Números', ['Números']],
   ['Números y datos', 'Fracciones', ['Fracciones']],
   ['Números y datos', 'Potencias y logaritmos', ['Potencias y logaritmos']],
   ['Números y datos', 'Proporciones', ['Proporciones']],
   ['Números y datos', 'Estadística', ['Estadística']],
-  ['Números y datos', 'Finanzas', ['Interés simple', 'Descuento e IVA']],
-  ['Álgebra', 'Ecuaciones', ['Ecuación lineal', 'Fórmula general']],
-  ['Álgebra', 'Binomios', ['Binomios y polinomios']],
-  ['Álgebra', 'Trinomios y más', ['Trinomios y polinomios']],
+  ['Números y datos', 'Probabilidad', ['Probabilidad']],
+  ['Números y datos', 'Finanzas', ['Interés simple', 'Interés compuesto y préstamos', 'Descuento e IVA']],
+  ['Números y datos', 'Conversor', ['Conversor de unidades']],
+  ['Números y datos', 'Otros números', ['Otros números']],
+  ['Álgebra y cálculo', 'Ecuaciones', ['Ecuación lineal', 'Fórmula general']],
+  ['Álgebra y cálculo', 'Sistemas', ['Sistemas de ecuaciones']],
+  ['Álgebra y cálculo', 'Desigualdades', ['Desigualdades']],
+  ['Álgebra y cálculo', 'Binomios', ['Binomios y polinomios']],
+  ['Álgebra y cálculo', 'Trinomios y más', ['Trinomios y polinomios']],
+  ['Álgebra y cálculo', 'Matrices', ['Matrices']],
+  ['Álgebra y cálculo', 'Complejos', ['Números complejos']],
+  ['Álgebra y cálculo', 'Progresiones', ['Progresiones']],
+  ['Álgebra y cálculo', 'Derivadas e integrales', ['Derivadas e integrales']],
+  ['Álgebra y cálculo', 'Graficador f(x)', ['Graficador f(x)']],
   ['Geometría', 'Círculo', ['Círculo']],
   ['Geometría', 'Puntos (x, y)', ['Distancia entre puntos', 'Punto medio']],
+  ['Geometría', 'Recta', ['Recta']],
   ['Geometría', 'Pitágoras', ['Teorema de Pitágoras']],
+  ['Geometría', 'Áreas planas', ['Áreas planas']],
   ['Geometría', 'Figuras 3D', ['Geometría 3D']],
-  ['Geometría', 'Trigonometría', ['Trigonometría']]
+  ['Geometría', 'Trigonometría', ['Trigonometría']],
+  ['Geometría', 'Vectores', ['Vectores']],
+  ['Geometría', 'Cónicas', ['Cónicas']]
 ];
 // Cada modo recibe su función de dibujo (DRAW, en dibujos.js)
 const MODS = MENU.map(([group, name, from]) => ({ group, name, modes: from.flatMap(n => {
@@ -421,6 +643,7 @@ $('#cReset').onclick = () => { Object.assign(CFG, { dec: 'auto', pi: 'exact', st
 $('#cClose').onclick = () => cfgDlg.close();
 cfgDlg.addEventListener('click', e => { if (e.target === cfgDlg) cfgDlg.close(); });
 
+document.addEventListener('gesturestart', e => e.preventDefault());   // sin zoom de página: el zoom vive en "Ampliar"
 form.addEventListener('input', update);
 form.addEventListener('submit', e => e.preventDefault());
 applyCfg();

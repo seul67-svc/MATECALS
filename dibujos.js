@@ -20,13 +20,13 @@ const plane = (pts, fn) => {
   const g = view([[0, 0], ...pts]);
   return svg(L(0, g.Y(0), W, g.Y(0), 'ax') + L(g.X(0), 0, g.X(0), H, 'ax') + fn(g));
 };
-const curve = (g, f) => {
+const curve = (g, f, cls = 'ln') => {
   const p = [];
   for (let i = 0; i <= 120; i++) {
     const x = g.xmin + (g.xmax - g.xmin) * i / 120, y = g.Y(f(x));
     if (y > -H && y < 2 * H) p.push(g.X(x).toFixed(1) + ',' + y.toFixed(1));
   }
-  return `<polyline class="ln" points="${p.join(' ')}"/>`;
+  return `<polyline class="${cls}" fill="none" points="${p.join(' ')}"/>`;
 };
 const pt = (g, x, y, name, c = 'pt', dy = -10) =>
   dot(g.X(x), g.Y(y), c) + T(g.X(x), g.Y(y) + dy, `${name}(${fmt(x)}, ${fmt(y)})`);
@@ -126,6 +126,50 @@ const barras = d => {
   }).join('') + L(20, my, W - 20, my, 'gd') + T(W - 20, my - 6, 'prom = ' + fmt(mean), 'end'));
 };
 
+// Recta Ax + By = C
+const lineABC = (g, a, b, c, cls = 'ln') => b !== 0 ? curve(g, x => (c - a * x) / b, cls) : L(g.X(c / a), 0, g.X(c / a), H, cls);
+const sist2 = ({ a, b, c, d, e, f }) => {
+  const D = a * e - b * d, p = D ? [(c * e - b * f) / D, (a * f - c * d) / D] : [0, 0];
+  return plane([p, [p[0] - 2, p[1]], [p[0] + 2, p[1]]], g => lineABC(g, a, b, c) + lineABC(g, d, e, f, 'sn') + (D ? pt(g, p[0], p[1], 'P', 'hl', 18) : ''));
+};
+const rectaDraw = (x1, y1, x2, y2) => {
+  if (x1 === x2 && y1 === y2) return '';
+  const A = y2 - y1, B = x1 - x2, C = A * x1 + B * y1;
+  return plane([[x1, y1], [x2, y2]], g => lineABC(g, A, B, C) + pt(g, x1, y1, 'P₁') + pt(g, x2, y2, 'P₂', 'pt', 18));
+};
+const vecDraw = ({ u, v }) => {
+  if (u.length !== 2 || v.length !== 2) return '';
+  const s = [u[0] + v[0], u[1] + v[1]];
+  return plane([u, v, s], g => L(g.X(0), g.Y(0), g.X(u[0]), g.Y(u[1])) + L(g.X(0), g.Y(0), g.X(v[0]), g.Y(v[1]), 'sn') + L(g.X(0), g.Y(0), g.X(s[0]), g.Y(s[1]), 'gd')
+    + pt(g, u[0], u[1], 'u') + pt(g, v[0], v[1], 'v', 'hl', 18) + pt(g, s[0], s[1], 'u+v', 'pt', 18));
+};
+const regDraw = ({ x, y }) => {
+  const n = x.length; if (n < 2 || y.length !== n) return '';
+  const mx = sumA(x) / n, my = sumA(y) / n, sxx = sumA(x.map(v => (v - mx) ** 2)); if (!sxx) return '';
+  const m = sumA(x.map((v, i) => (v - mx) * (y[i] - my))) / sxx, b = my - m * mx;
+  return plane(x.map((v, i) => [v, y[i]]), g => curve(g, t => m * t + b) + x.map((v, i) => dot(g.X(v), g.Y(y[i]), 'hl')).join(''));
+};
+// Gráfica de una o más funciones en [xmin, xmax] con escala propia en cada eje
+const graf = (fns, xmin = -10, xmax = 10) => {
+  const ys = [];
+  fns.forEach(f => { for (let i = 0; i <= 200; i++) { const y = f(xmin + (xmax - xmin) * i / 200); if (Number.isFinite(y)) ys.push(y); } });
+  if (ys.length < 2) return '';
+  ys.sort((a, b) => a - b);
+  let lo = ys[Math.floor(ys.length * .03)], hi = ys[Math.floor(ys.length * .97)];
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * .1; lo = Math.min(lo - pad, 0); hi = Math.max(hi + pad, 0);
+  const X = x => 24 + (x - xmin) / (xmax - xmin) * (W - 48), Y = y => H - 24 - (y - lo) / (hi - lo) * (H - 48);
+  let out = L(24, Y(0), W - 24, Y(0), 'ax') + L(X(0), 24, X(0), H - 24, 'ax') + T(24, H - 6, fmt(xmin), 'start') + T(W - 24, H - 6, fmt(xmax), 'end');
+  fns.forEach((f, k) => {
+    const cls = k ? 'sn' : 'ln'; let seg = [];
+    const flush = () => { if (seg.length > 1) out += `<polyline class="${cls}" fill="none" points="${seg.join(' ')}"/>`; seg = []; };
+    for (let i = 0; i <= 400; i++) { const x = xmin + (xmax - xmin) * i / 400, y = f(x), py = Y(y);
+      if (Number.isFinite(y) && py > -H && py < 2 * H) seg.push(X(x).toFixed(1) + ',' + py.toFixed(1)); else flush(); }
+    flush();
+  });
+  return svg(out);
+};
+
 // Gráfica de ax³ + bx² + cx + d con sus raíces reales
 const cubica = ({ a, b, c, d }) => {
   const { r } = cubicRoots(a, b, c, d), f = x => ((a * x + b) * x + c) * x + d;
@@ -145,6 +189,12 @@ const areaBinomio = (a, b) => {
 const DRAW = {
   'Binomios y polinomios': [v => areaBinomio(v.a, v.b)],
   'Trinomios y polinomios': [, parab, cubica],
+  'Graficador f(x)': [v => graf([x => evalExpr(v.f, { x })])],
+  'Derivadas e integrales': [v => graf([x => horner(v.p, x), x => horner(dpoly(v.p), x)]), v => graf([x => horner(v.p, x), x => horner(ipoly(v.p), x)]), v => graf([x => horner(v.p, x)])],
+  'Sistemas de ecuaciones': [sist2],
+  'Recta': [v => rectaDraw(v.x1, v.y1, v.x2, v.y2), v => rectaDraw(v.x1, v.y1, v.x1 + 1, v.y1 + v.m)],
+  'Vectores': vecDraw,
+  'Probabilidad': [regDraw],
   'Círculo': [v => circulo(v.r), v => circulo(sq(v.A / P)), v => circulo(v.p / (2 * P))],
   'Distancia entre puntos': v => seg(v, false),
   'Punto medio': v => seg(v, true),
@@ -157,9 +207,10 @@ const DRAW = {
 };
 
 // Dibujos que se adaptan a la proporción de la pantalla cuando se amplían
-[DRAW['Distancia entre puntos'], DRAW['Punto medio'], DRAW['Ecuación lineal'], DRAW['Fórmula general'],
-  ...DRAW['Trinomios y polinomios'].slice(1), ...DRAW['Teorema de Pitágoras'], DRAW['Trigonometría'][2], ...DRAW['Círculo']
-].forEach(f => { f.flex = true; });
+['Distancia entre puntos', 'Punto medio', 'Ecuación lineal', 'Fórmula general', 'Trinomios y polinomios', 'Teorema de Pitágoras', 'Círculo',
+  'Graficador f(x)', 'Derivadas e integrales', 'Sistemas de ecuaciones', 'Recta', 'Vectores', 'Probabilidad']
+  .forEach(n => [].concat(DRAW[n]).filter(Boolean).forEach(f => { f.flex = true; }));
+DRAW['Trigonometría'][2].flex = true;
 
 // Dibuja f con el alto de la pantalla (ancho fijo de 400) si es flexible; si no, con el tamaño normal
 function renderAt(f, vals, w, h) {

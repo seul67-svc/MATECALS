@@ -10,6 +10,7 @@
   --glass:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.04));--edge:rgba(255,255,255,.16);--hi:rgba(255,255,255,.28);--scrim:rgba(4,10,24,.6);--shadow:rgba(0,0,0,.6)}}
 
 *{box-sizing:border-box}
+html,body{touch-action:manipulation}
 [hidden]{display:none!important}
 body{margin:0;min-height:100dvh;color:var(--ink);font:1rem/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;
   background:radial-gradient(55rem 38rem at 8% -8%,var(--b1),transparent 62%),radial-gradient(48rem 36rem at 105% 8%,var(--b2),transparent 58%),radial-gradient(52rem 38rem at 45% 115%,var(--b3),transparent 62%),var(--bg);background-attachment:fixed}
